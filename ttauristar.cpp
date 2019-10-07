@@ -193,10 +193,7 @@ void TTauriStar::calculateperiods()
 	diskdensities_.clear();
 	acceffs_.clear();
 	phase_.clear();
-<<<<<<< HEAD
 	rmPeriods_.clear();
-=======
->>>>>>> 32ab899eeb927028c033fa342b2328a902b90dfe
 
 	// initialze mass2_
 	mass2_ = masses_[0];
@@ -285,10 +282,7 @@ void TTauriStar::calculateperiods()
 		diskdensities_.push_back(diskdensity_);
 		acceffs_.push_back(acceff_);
 		phase_.push_back(phase);
-<<<<<<< HEAD
 		rmPeriods_.push_back(periodrm_);
-=======
->>>>>>> 32ab899eeb927028c033fa342b2328a902b90dfe
 	}
 }
 
@@ -348,13 +342,10 @@ vector<double> TTauriStar::getvector(int n)
 	if (n == 9) {
 		output = phase_;
 	}
-<<<<<<< HEAD
 
 	if (n == 10) {
 		output = rmPeriods_;
 	}
-=======
->>>>>>> 32ab899eeb927028c033fa342b2328a902b90dfe
 
 	return output;
 }
@@ -389,12 +380,9 @@ string TTauriStar::getname(int n)
 	if (n== 9) {
 		output = "Phase";
 	}
-<<<<<<< HEAD
 	if (n==10) {
 		output = "R_mPeriods";
 	}
-=======
->>>>>>> 32ab899eeb927028c033fa342b2328a902b90dfe
 
 	return output;
 }
@@ -429,13 +417,10 @@ string TTauriStar::getunit(int n)
 	if (n == 9) {
 		output = "1 = spin up, 2 = propeller effect, 3 = disk locked, 4 = disk unlocked";
 	}
-<<<<<<< HEAD
 
 	if (n==10) {
 		output = "days";
 	}
-=======
->>>>>>> 32ab899eeb927028c033fa342b2328a902b90dfe
 
 	return output;
 }
