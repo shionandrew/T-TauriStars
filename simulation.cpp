@@ -410,16 +410,10 @@ int main()
 
         // compute cmk table
         vector<vector<double>> cmktable = readcmk("cmkdata.txt");
-				
+
         // create a star
         TTauriStar star = TTauriStar(cmktable, mass, age, 1, 1.67);
         star.update();
-
-<<<<<<< HEAD
-        int TIME_INDEX = 1;
-        int N_Y_INDEX = 10;
-=======
->>>>>>> 32ab899eeb927028c033fa342b2328a902b90dfe
 
 				// Saving plots to folder
         stringstream folderNameStream;
@@ -434,7 +428,7 @@ int main()
 
 			  // Plot all of the star's parameters as a function of time
 				int TIME_INDEX = 1;
-        int N_Y_INDEX = 9;
+        int N_Y_INDEX = 10;
         for(int y_index = 2; y_index <= N_Y_INDEX; y_index += 1) {
             star.plot(TIME_INDEX, y_index);
         }
