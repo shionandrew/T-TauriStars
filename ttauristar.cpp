@@ -11,7 +11,7 @@
 #include <sstream>
 #include <iomanip>
 #include <numeric>
-using namespace std;  /// a library of functions
+using namespace std;
 
 double const TIMESTEP = 0.01;       /// timestep //constant fraction of age
 double const ALPHA = 0.01;           /// viscocity parameter
@@ -19,13 +19,14 @@ double const BETA = 1.35;            /// R_M/R_A
 double const GAMMA = 1.0;            /// R_C/R_M
 //double const SHAPEFACTOR = 0.17;     /// f in the rotational inertia I=fMR^2
 double const PROPEFF = 0.3;          /// propeller coefficient
-double const CRITICALDENSITY = 250;  /// accretion disk density cutoff 6e-4
+double const CRITICALDENSITY = 6e-4;  /// accretion disk density cutoff 6e-4 g/cm^2
 double const PROPSTARTTIME = 0.05;   /// B-field turn-on time; simulation starts at this time
 double const TURNONTIME = 0.05;      /// should be the same as above
 // double const PROPTIMESPREAD = 0.002; /// introduce randomness for PROPSTARTTIME
 double const DELTAM = 0.001;            /// deltam to determine when to stop mass iterations
 // new parameter to investigate accretion efficiency
-double const ACCPOWER = -2.8;
+double const ACCPOWER = -2.1;
+
 
 TTauriStar::TTauriStar(vector<vector<double>> cmktable,
 	double mass, double age, double massdotfactor, double bfieldstrength)
@@ -33,33 +34,23 @@ TTauriStar::TTauriStar(vector<vector<double>> cmktable,
     :cmktable_(cmktable), mass_(mass), mass0_(mass), mass2_(0),
      age_(age), massdotfactor_(massdotfactor), bfieldstrength_(bfieldstrength)
 
-{
+	{
 	// initialize validity of mass
 	if (mass > 3) {
 		valid_ = false;
 	} else {
 		valid_ = true;
 	}
-	// set propeller endtime to be the same as starttime
+	// initially set propeller endtime to be the same as starttime (no phase 2)
 	propendtime_ = PROPSTARTTIME;
+	// initially assume no accretion
 	acceff_ = 0;
+
 	// save initial values of age and acceff in the corresponding vectors
 	// go backwards in time
 	while (age_ > 0) {
 
-		// push_back the age into the ages vector (!!!Could just push front...)
-		/* ages_.push_front(age_);
-		if (age_ < PROPSTARTTIME) {
-			acceffs_.push_front(0);
-		} else {
-			acceffs_.push_front(1);
-		}
-		// calculate new age
-		age_ -= TIMESTEP;
-	}
-}
-		*/
-
+		// push_back the age into the ages vector
 		// will also be reversed later
 		ages_.push_back(age_);
 		if (age_ < PROPSTARTTIME) {
@@ -79,6 +70,7 @@ TTauriStar::TTauriStar(vector<vector<double>> cmktable,
 double TTauriStar::calculatemassdot()
 {
 	// calculates and returns current value of Mdot in unts M_sun/yr
+	// massdotfactor mimics scatter
 	// Power relationship to be investigated
 		return 7.0e-8*massdotfactor_*pow(age_,ACCPOWER)*pow(mass_,2.43);
 }
@@ -150,14 +142,14 @@ double TTauriStar::calculatebfield()
 
 double TTauriStar::calculaterm()
 {
+	return 14.4*BETA*pow(mass_/0.5,-1./7.)*pow(bfield_,4./7.)*pow(radius_/2.,12./7.)*pow(massdot_/1.e-8,-2./7.);
 	// radius at which ram pressure equals magnetic pressure*BETA (magnetispheric radius)
-	return 18.7*BETA*pow(mass_/0.5,-1./7.)*pow(bfield_,4./7.)*pow(radius_/2.,12./7.)*pow(massdot_/1.e-8,-2./7.);
 }
 
 double TTauriStar::calculatediskdensity()
 {
 	// density of accretion disk at rm
-	return 8.79e6*pow(ALPHA,-4.0/5.0)*pow(massdot_,0.7)*pow(mass_,0.25)*pow(rm_,-0.75)*pow(1.0-pow(radius_/rm_,0.5),7.0/10.0);
+	return 8.79*pow(ALPHA,-4.0/5.0)*pow(massdot_,0.7)*pow(mass_,0.25)*pow(rm_,-0.75)*pow(1.0-pow(radius_/rm_,0.5),7.0/10.0);
 }
 
 void TTauriStar::calculatemasses()
@@ -246,26 +238,24 @@ void TTauriStar::calculateperiods()
 		} else if (diskdensity_ > CRITICALDENSITY && phase <= 3) {
 			// should gamma be kept? why isn't period = periodrm. Compare period to periodrm. Is gamma = 1?
 			// condition for turning on propellar effect is w(Rc) = Req = gamma Rcm.
-			double G = 6.626*pow(10, -11); // convert from m^3/kg*s^2 to Rsun^3/(Mdot*(Myr)^2)
-			double R_cm = (mass_/(4*pow(3.14,2)));
  			period_ = 8.*pow(GAMMA*BETA/0.9288,3./2.)*pow(massdot_/1.0e-8,-3./7.)*pow(mass_/0.5,-5./7.)*pow(radius_/2.,18./7.)*pow(bfield_,6./7.);
-			//period_ = periodrm;
 			phase = 3;
 			if (period_ != periodrm_) {
-				std::cout << "Calculated Period: " << std::endl;
-				std::cout << period_ << std::endl;
-				std::cout << "Rm Period: " << std::endl;
-				std::cout << periodrm_ << std::endl;
+				//std::cout << "Calculated Period: " << std::endl;
+				//std::cout << period_ << std::endl;
+				//std::cout << "Rm Period: " << std::endl;
+				//std::cout << periodrm_ << std::endl;
 			}
 
 
 		// Phase 4: unlocked
 		} else {
 			// G in units of (solar radius^3)/(day^2 solarmass) G = 2937.5
+			// timestep*10^6?
 			period_ += period_*2*(radius_-radius)/radius_
 			        +TIMESTEP*acceff_*period_*massdot_/mass_
-				-50.74*TIMESTEP*acceff_*pow(period_,2)*massdot_/pow(mass_,0.5)*pow(rm_,0.5)*pow(radius_,-2.);
-		        phase = 4;
+				-50.74*TIMESTEP*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(rm_,0.5)*pow(radius_,-2.);
+		   phase = 4;
 			// SHOULD the acceff=0 here?!!!!!!
 		}
 
@@ -290,23 +280,22 @@ double TTauriStar::update()
 {
 	if (valid_) {
 		// keep track of the number of iterations
-		int i = 0;
-		while (abs((mass2_-mass0_)/mass0_) > DELTAM && i < 50) {
+		int numIterations = 0;
+		while (abs((mass2_-mass0_)/mass0_) > DELTAM && numIterations < 50) {
 			calculatebfield();
 			calculatediskdensity();
 			calculatemassdot();
 			calculateradius();
 			calculatemasses();
 		  calculateperiods();
-		    // cout << "mass2" << mass2_ << endl;
-		    // cout << "mass" << mass_ << endl;
-		    ++i;
+			++numIterations;
 		}
 		// Used for debugging.  Printing the iteration value for each star and the error
-     	cout << "iterated " << i << " times" << " Error = "<< (mass2_-mass0_)/mass0_ << " Mass = "<< mass0_ << endl;
+    cout << "iterated " << numIterations << " times" << " Error = "<< (mass2_-mass0_)/mass0_ << " Mass = "<< mass0_ << endl;
 		return period_;
+
 	} else {
-		// star is not valid_
+		cout << "Star is not valid" << endl;
 		return 0;
 	}
 
