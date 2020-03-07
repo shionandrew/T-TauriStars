@@ -7,8 +7,99 @@
  */
 
 #include "ttauristar.hpp"
-
 using namespace std;
+
+
+struct starData {
+	double period;
+	int phase;
+};
+
+/**
+ * \brief computes average and standard deviation of periods in a bucket
+ *
+ * \returns struct containing
+ */
+void computeStats(vector<starData> periods, int bucket, int simulationNumber)
+{
+	// calculate average
+	int phase1=0;
+	int phase2=0;
+	int phase3=0;
+	int phase4=0;
+
+  for(size_t i=0; i<periods.size() ; ++i){
+		int phase = periods[i].phase;
+		if(phase <= 1){
+			++phase1;
+		}
+		else if(phase <= 2){
+			++phase2;
+		}
+		else if(phase <= 3){
+			++phase3;
+		}
+		else if(phase <= 4){
+			++phase4;
+		}
+	}
+
+	// save star population distribution per bucket in csv
+	std::ofstream myfile;
+	myfile.open ("starStages" + to_string(simulationNumber) + ".csv", std::ios_base::app); // append instead of overwrite
+	myfile << bucket << "," << phase1 << "," << phase2 << "," << phase3 << "," << phase4 << "\n";
+	myfile.close();
+
+	cout << "BUCKET: " << bucket << endl;
+	cout << "SpinUp: " << phase1 << endl;
+	cout << "Propellar: " << phase2 << endl;
+	cout << "Locked: " << phase3 << endl;
+	cout << "Unlocked: " << phase4 << endl;
+	cout << "" << endl;
+
+}
+
+
+/**
+ * \brief sorts periods into buckets and populates a vector with those periods for each bucket
+ *
+ * \returns
+ */
+vector<vector<starData>> populateBuckets(vector<starData> periods, int numBuckets, int bucketSize, int simulationNumber)
+{
+	// initialize vector of vectors; each bucket contains vector of periods
+	vector<vector<starData>> periodsData;
+	for(int i = 0; i < numBuckets; ++i){
+		vector<starData> bucket;
+		periodsData.push_back(bucket);
+	}
+	// populate buckets
+	for(size_t i = 0; i < periods.size();++i){
+		// determine which bucket period fits into
+		int index = (int)(periods[i].period/bucketSize);
+		// ignoring stars with periods greater than 14 days
+		if(index < numBuckets) {
+		periodsData[index].push_back(periods[i]);
+	}
+}
+for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
+		if(!periodsData[bucket].empty()) {
+			computeStats(periodsData[bucket], bucket, simulationNumber);
+		}
+}
+
+	for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
+		// save number of stars in each bucket to csv
+		std::ofstream myfile;
+		myfile.open ("bucketCount" +  to_string(simulationNumber) + ".csv", std::ios_base::app); // append instead of overwrite
+		myfile << bucket << "," << periodsData[bucket].size()  << "\n";
+		myfile.close();
+		//cout << "BUCKET: " << bucket << endl;
+		//cout << periodsData[bucket].size() << endl;
+	}
+	return periodsData;
+}
+
 /**
  * \brief read cmk data file
  *
@@ -262,26 +353,37 @@ void plotstartable(vector<vector<double>> startable, size_t cluster, bool simula
     fclose(temp);
 }
 
+
 /**
  * \brief plot period histogram,
  *
- * \param periods1 for stars with mass < 0.25 and periods2 for stars with mass > 0.25
+ * \param starData struct periods1 for stars with mass < 0.25, periods2 for stars with mass > 0.25, simulationNumber (if performing multiple simulations)
  * \returns
  */
-void plothistogram(vector<double> periods1, vector<double> periods2)
+void plothistogram(vector<starData> periods1, vector<starData>periods2, int simulationNumber)
 {
+		vector<vector<starData>> periods1Data = populateBuckets(periods1, 14 ,1, simulationNumber);
+		vector<vector<starData>> periods2Data = populateBuckets(periods2, 14 ,1, simulationNumber);
+
     FILE * temp1 = fopen("periods1.temp", "w");
     FILE * temp2 = fopen("periods2.temp", "w");
-    FILE* gp3=popen("gnuplot -persistent","w");
+		//FILE * temp1 = fopen("period.temp", "w");
+		//FILE * temp2 = fopen("period.temp", "w");
+
+		FILE* gp3=popen("gnuplot -persistent","w");
+
+		// write periods to file for gnuplot
     for(size_t k=0;k<periods1.size();k++) {
-        fprintf(temp1,"%f \n",periods1[k]);
+        fprintf(temp1,"%f %x \n",periods1[k].period, periods1[k].phase);
     }
     for(size_t k=0;k<periods2.size();k++) {
-        fprintf(temp2,"%f \n",periods2[k]);
+        fprintf(temp2,"%f %x \n",periods2[k].period,  periods2[k].phase);
     }
 
+		cout << "Number of Stars: " << periods1.size()+periods2.size() << endl;
+
     fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
-    fprintf(gp3, "%s \n", "set output 'distribution.eps'");
+    fprintf(gp3, "%s%s%s \n", "set output 'distribution ", to_string(simulationNumber).c_str(), ".eps'");
     fprintf(gp3, "%s\n", "binwidth=1");
     fprintf(gp3, "%s\n", "set boxwidth binwidth");
     fprintf(gp3, "%s\n", "bin(x,width)=width*floor(x/width) + binwidth/2.0");
@@ -296,6 +398,8 @@ void plothistogram(vector<double> periods1, vector<double> periods2)
     fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.8,0.9");
     fprintf(gp3, "%s \n", "plot 'periods2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
     fprintf(gp3, "%s \n", "unset multiplot");
+
+		//fprintf(gp3, "%s \n", "plot 'period.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, '' using 2 title 'Col2'");
 
     fclose(temp1);
     fclose(temp2);
@@ -326,27 +430,35 @@ void plotdistribution()
         }
     }
     // plot
-    plothistogram(periods1, periods2);
+    //plothistogram(periods1, periods2);
 }
 
 /**
  * \brief simulation of n stars
  *
- * \param cluster 1=ONC, 2=NGC
+ * \param cluster 1=ONC, 2=NGC and simulationNumber (to keep track if performing multiple iteration)
  * \returns
  */
-void simulation(vector<vector<double>> simstartable)
+void simulation(vector<vector<double>> simstartable, int simulationNumber)
 {
     // compute cmk table
     vector<vector<double>> cmktable = readcmk("cmkdata.txt");
 
     // generator
     default_random_engine genm;
-    default_random_engine genb;
-    // normal distribution of log(massfactor)
+    //default_random_engine genb;
+
+		random_device rd;  //Will be used to obtain a seed for the random number engine
+		mt19937 genb(rd()); //Standard mersenne_twister_engine seeded with rd()
+
+		// normal distribution of log(massfactor)
     normal_distribution<double> logmdotfactordist(0.0,0.32);
-    // normal distribution of bfieldstrength
-    normal_distribution<double> bfielddist(1.67,0.1);
+
+		// normal distribution of bfieldstrength
+    //normal_distribution<double> bfielddist(1.67,0.1);
+
+		// uniform distribution of bfieldstrength
+		uniform_real_distribution<double> bfielddist(1.2,2.0);
 
     // loop through the stars
     std::clock_t start;
@@ -356,30 +468,42 @@ void simulation(vector<vector<double>> simstartable)
     datafile = fopen("simulationONC.txt", "w");
     // write first line
     fprintf(datafile,"%s \n","mass(solarmass) age(Myr)        period(days)    log(mdotfactor) bfield(kG)");
-    vector<double> periods1, periods2;
+
+		vector<starData> periods1, periods2;
+
+		//vector<double> periods1, periods2;
     for (size_t i = 0; i < simstartable[0].size(); ++i) {
-        double mass = pow(10,simstartable[0][i]);
-        double age = pow(10,simstartable[1][i]);
-        double logmdotfactor = 0; //logmdotfactordist(genm); //pick fixed value
-        double bfieldstrength = 1.67; //bfielddist(genb); //pick fixed value
-        TTauriStar star = TTauriStar(cmktable, mass, age, pow(10,logmdotfactor), bfieldstrength);
-        double period = star.update();
-        // write to file
-        fprintf(datafile,"%f        %f        %f        %f        %f \n",mass,age,period,logmdotfactor,bfieldstrength);
-        if (period > 0.001) {
-            if (mass < 0.25) {
-                periods1.push_back(period);
-            } else {
-                periods2.push_back(period);
-            }
-            //star.plot(1,2);
-        }
-    }
+			for(size_t repeat = 0; repeat < 1; ++repeat){
+		        double mass = pow(10,simstartable[0][i]);
+		        double age = 1; //pow(10,simstartable[1][i]);
+		        double logmdotfactor = logmdotfactordist(genb); //pick fixed value
+						double bfieldstrength = bfielddist(genb);
+						//double bfieldstrength = 1.67; //bfield0dist(genb); //pick fixed value
+		        TTauriStar star = TTauriStar(cmktable, mass, age, pow(10,logmdotfactor), bfieldstrength);
+						std::vector<double> dataVector = star.update();
+						starData currentStar;
+		        currentStar.period = dataVector.at(0);
+						currentStar.phase = dataVector.at(1);
+						double period = currentStar.period;
+
+		        // write to file
+		        fprintf(datafile,"%f        %f        %f        %f        %f \n",mass,age,period, logmdotfactor,bfieldstrength);
+		        if (currentStar.period > 0.001) {
+		            if (mass < 0.25) {
+		                periods1.push_back(currentStar);
+		            } else {
+		                periods2.push_back(currentStar);
+		            }
+		            //star.plot(1,2);
+		        }
+					}
+		    }
+
     fclose(datafile);
     duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-    std::cout<<"the program takes "<< duration << " s" << endl;
+    cout<<"the program takes "<< duration << " s" << endl;
     // plot
-    plothistogram(periods1, periods2);
+    plothistogram(periods1, periods2, simulationNumber);
 }
 
 
@@ -411,14 +535,14 @@ int main()
         // compute cmk table
         vector<vector<double>> cmktable = readcmk("cmkdata.txt");
 
-        // create a star
+        // create a star with magnetic field of 1.67kG
         TTauriStar star = TTauriStar(cmktable, mass, age, 1, 1.67);
         star.update();
 
 				// Saving plots to folder
         stringstream folderNameStream;
         folderNameStream << std::fixed << setprecision(2);
-        folderNameStream << "_Mass_" << mass;
+        folderNameStream << "Mass_" << mass;
         //folderNameStream << "Star: Mass_" << mass << " Age_ " << age;
         string folderName = folderNameStream.str();
 
@@ -435,26 +559,31 @@ int main()
 
 
     } else if (typeofsimulation == 2) {
-        // Simuate a cluster: 1 = ONC, 2 = NGC 2264
-        size_t cluster;
-        cout << "Which cluster do you want to simulate?" << endl;
-        cout << "Type 1 for ONC, type 2 for NGC2264" << endl;
-        cin >> cluster;
-        cout << "The value you entered is " << cluster << endl;
-        // sample from a given cluster
-        vector<vector<double>> startable;
-        if (cluster == 1) {
-            startable = readcluster("hillenbrand.txt");
-        } else if (cluster == 2) {
-            startable = readcluster("dahm.txt");
-        } else {
-            throw invalid_argument( "Invalid input" );
-        }
-        // plotstartable(startable, cluster, false);
-        // simulate a startable of size n
-        vector<vector<double>> simstartable = generatedistribution(startable,1000);
-        // plotstartable(simstartable, cluster, true);
-        simulation(simstartable);
+	        // Simuate a cluster: 1 = ONC, 2 = NGC 2264
+	        size_t cluster;
+	        cout << "Which cluster do you want to simulate?" << endl;
+	        cout << "Type 1 for ONC, type 2 for NGC2264" << endl;
+	        cin >> cluster;
+	        cout << "The value you entered is " << cluster << endl;
+	        // sample from a given cluster
+
+	        vector<vector<double>> startable;
+	        if (cluster == 1) {
+	            startable = readcluster("hillenbrand.txt");
+	        } else if (cluster == 2) {
+	            startable = readcluster("dahm.txt");
+	        } else {
+	            throw invalid_argument( "Invalid input" );
+	        }
+		        // plotstartable(startable, cluster, false);
+		        // simulate a startable of size n
+		        vector<vector<double>> simstartable = generatedistribution(startable,1000);
+		        // plotstartable(simstartable, cluster, true);
+
+						for(int simulationNumber = 0; simulationNumber < 1; ++simulationNumber) {
+							simulation(simstartable, simulationNumber);
+						}
+
     } else {
         throw invalid_argument( "Invalid input" );
     }
