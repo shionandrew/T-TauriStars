@@ -1,12 +1,15 @@
 /**
  * \file simulation.cpp
  *
- * \authors Cynthia Yan
+ * \authors Cynthia Yan ('18'), Shion Andrew
  *
  * \brief Provides the main() function for simulating a ttauri star cluster or one star; defines other helper functions not associated with TTauriStar class.
  */
 
 #include "ttauristar.hpp"
+#include <stdio.h>
+#include <gsl/gsl_sf_bessel.h>
+
 using namespace std;
 
 
@@ -16,9 +19,8 @@ struct starData {
 };
 
 /**
- * \brief computes average and standard deviation of periods in a bucket
+ * \brief computes number of stars in bucket
  *
- * \returns struct containing
  */
 void computeStats(vector<starData> periods, int bucket, int simulationNumber)
 {
@@ -28,8 +30,8 @@ void computeStats(vector<starData> periods, int bucket, int simulationNumber)
 	int phase3=0;
 	int phase4=0;
 
-  for(size_t i=0; i<periods.size() ; ++i){
-		int phase = periods[i].phase;
+  for(size_t bucket=0; bucket<periods.size() ; ++bucket){
+		int phase = periods[bucket].phase;
 		if(phase <= 1){
 			++phase1;
 		}
@@ -46,7 +48,7 @@ void computeStats(vector<starData> periods, int bucket, int simulationNumber)
 
 	// save star population distribution per bucket in csv
 	std::ofstream myfile;
-	myfile.open ("starStages" + to_string(simulationNumber) + ".csv", std::ios_base::app); // append instead of overwrite
+	myfile.open ("starStages" + to_string(simulationNumber) + ".csv", std::ios_base::app);
 	myfile << bucket << "," << phase1 << "," << phase2 << "," << phase3 << "," << phase4 << "\n";
 	myfile.close();
 
@@ -63,7 +65,7 @@ void computeStats(vector<starData> periods, int bucket, int simulationNumber)
 /**
  * \brief sorts periods into buckets and populates a vector with those periods for each bucket
  *
- * \returns
+ * \returns vectors of vectors of star data)
  */
 vector<vector<starData>> populateBuckets(vector<starData> periods, int numBuckets, int bucketSize, int simulationNumber)
 {
@@ -82,6 +84,7 @@ vector<vector<starData>> populateBuckets(vector<starData> periods, int numBucket
 		periodsData[index].push_back(periods[i]);
 	}
 }
+
 for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 		if(!periodsData[bucket].empty()) {
 			computeStats(periodsData[bucket], bucket, simulationNumber);
@@ -91,14 +94,133 @@ for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 	for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 		// save number of stars in each bucket to csv
 		std::ofstream myfile;
-		myfile.open ("bucketCount" +  to_string(simulationNumber) + ".csv", std::ios_base::app); // append instead of overwrite
+		myfile.open ("bucketCount" +  to_string(simulationNumber) + ".csv", std::ios_base::app);
 		myfile << bucket << "," << periodsData[bucket].size()  << "\n";
 		myfile.close();
-		//cout << "BUCKET: " << bucket << endl;
-		//cout << periodsData[bucket].size() << endl;
 	}
 	return periodsData;
 }
+
+
+/**
+ * \brief returns stars in periods vector that have specified phase
+ *
+ * \param starData struct periods to be sorted, phaseNumber specifying desired phase
+ * \returns subset of starData struct periods that have specified phase
+ */
+ vector<starData> sortPhase(vector<starData> periods, int phaseNumber)
+ {
+	 vector<starData> sortedPeriods;
+	 for(size_t star = 0; star<periods.size(); ++star) {
+		 if(periods[star].phase == phaseNumber){
+			 sortedPeriods.push_back(periods[star]);
+		 }
+	 }
+	 return sortedPeriods;
+ }
+
+
+
+
+/**
+ * \brief plot period histogram,
+ *
+ * \param starData struct periods1 for stars with mass < 0.25, periods2 for stars with mass > 0.25, simulationNumber (if performing multiple simulations)
+ * \returns
+ */
+void plothistogram(vector<starData> periods1, vector<starData>periods2, int simulationNumber)
+{
+		vector<vector<starData>> periods1Data = populateBuckets(periods1, 14 ,1, simulationNumber);
+		vector<vector<starData>> periods2Data = populateBuckets(periods2, 14 ,1, simulationNumber);
+
+		vector<starData> periods1_4 = sortPhase(periods1, 4);
+		vector<starData> periods1_3 = sortPhase(periods1, 3);
+		vector<starData> periods1_2 = sortPhase(periods1, 2);
+		vector<starData> periods1_1 = sortPhase(periods1, 1);
+
+		vector<starData> periods2_4 = sortPhase(periods2, 4);
+		vector<starData> periods2_3 = sortPhase(periods2, 3);
+		vector<starData> periods2_2 = sortPhase(periods2, 2);
+		vector<starData> periods2_1 = sortPhase(periods2, 1);
+
+
+    FILE * temp1 = fopen("periods1.temp", "w");
+		FILE * temp1_4 = fopen("periods1_4.temp", "w");
+		FILE * temp1_3 = fopen("periods1_3.temp", "w");
+		FILE * temp1_2 = fopen("periods1_2.temp", "w");
+		FILE * temp1_1 = fopen("periods1_1.temp", "w");
+
+    FILE * temp2 = fopen("periods2.temp", "w");
+		FILE * temp2_4 = fopen("periods2_4.temp", "w");
+		FILE * temp2_3 = fopen("periods2_3.temp", "w");
+		FILE * temp2_2 = fopen("periods2_2.temp", "w");
+		FILE * temp2_1 = fopen("periods2_1.temp", "w");
+
+		FILE* gp3=popen("gnuplot -persistent","w");
+
+		// write periods to file for gnuplot
+    for(size_t k=0;k<periods1.size();k++) {
+        fprintf(temp1,"%f %x \n",periods1[k].period, periods1[k].phase);
+    }
+
+		for(size_t k=0;k<periods1_4.size();k++) {
+				fprintf(temp1_4,"%f %x \n",periods1_4[k].period, periods1_4[k].phase);
+		}
+
+		for(size_t k=0;k<periods1_3.size();k++) {
+				fprintf(temp1_3,"%f %x \n",periods1_3[k].period, periods1_3[k].phase);
+		}
+
+		for(size_t k=0;k<periods1_2.size();k++) {
+				fprintf(temp1_2,"%f %x \n",periods1_2[k].period, periods1_2[k].phase);
+		}
+
+		for(size_t k=0;k<periods1_1.size();k++) {
+				fprintf(temp1_1,"%f %x \n",periods1_1[k].period, periods1_1[k].phase);
+		}
+
+    for(size_t k=0;k<periods2.size();k++) {
+        fprintf(temp2,"%f %x \n",periods2[k].period,  periods2[k].phase);
+    }
+
+		for(size_t k=0;k<periods2_4.size();k++) {
+        fprintf(temp2_4,"%f %x \n",periods2_4[k].period,  periods2_4[k].phase);
+    }
+
+		for(size_t k=0;k<periods2_3.size();k++) {
+        fprintf(temp2_3,"%f %x \n",periods2_3[k].period,  periods2_3[k].phase);
+    }
+		for(size_t k=0;k<periods2_2.size();k++) {
+				fprintf(temp2_2,"%f %x \n",periods2_2[k].period,  periods2_2[k].phase);
+		}
+		for(size_t k=0;k<periods2_1.size();k++) {
+				fprintf(temp2_1,"%f %x \n",periods2_1[k].period,  periods2_1[k].phase);
+		}
+
+		//cout << "Number of Stars: " << periods1.size()+periods2.size() << endl;
+
+    fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+    fprintf(gp3, "%s%s%s \n", "set output 'distribution ", to_string(simulationNumber).c_str(), ".eps'");
+    fprintf(gp3, "%s\n", "binwidth=1");
+    fprintf(gp3, "%s\n", "set boxwidth binwidth");
+    fprintf(gp3, "%s\n", "bin(x,width)=width*floor(x/width) + binwidth/2.0");
+    fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Period Distribution","\"");
+    fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
+    fprintf(gp3, "%s \n", "unset xlabel");
+    fprintf(gp3, "%s \n", "set xrange [0:14]");
+    fprintf(gp3, "%s%s %s \n", "set label 1\"","m < 0.25 solar mass","\" at graph 0.8,0.9");
+    fprintf(gp3, "%s \n", "plot 'periods1.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods1_4.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
+    fprintf(gp3, "%s \n", "set xlabel \"Period (days)\"");
+    fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.8,0.9");
+    fprintf(gp3, "%s \n", "plot 'periods2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_4.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_3.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
+    fprintf(gp3, "%s \n", "unset multiplot");
+
+		//fprintf(gp3, "%s \n", "plot 'period.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, '' using 2 title 'Col2'");
+
+    fclose(temp1);
+    fclose(temp2);
+}
+
 
 /**
  * \brief read cmk data file
@@ -353,58 +475,6 @@ void plotstartable(vector<vector<double>> startable, size_t cluster, bool simula
     fclose(temp);
 }
 
-
-/**
- * \brief plot period histogram,
- *
- * \param starData struct periods1 for stars with mass < 0.25, periods2 for stars with mass > 0.25, simulationNumber (if performing multiple simulations)
- * \returns
- */
-void plothistogram(vector<starData> periods1, vector<starData>periods2, int simulationNumber)
-{
-		vector<vector<starData>> periods1Data = populateBuckets(periods1, 14 ,1, simulationNumber);
-		vector<vector<starData>> periods2Data = populateBuckets(periods2, 14 ,1, simulationNumber);
-
-    FILE * temp1 = fopen("periods1.temp", "w");
-    FILE * temp2 = fopen("periods2.temp", "w");
-		//FILE * temp1 = fopen("period.temp", "w");
-		//FILE * temp2 = fopen("period.temp", "w");
-
-		FILE* gp3=popen("gnuplot -persistent","w");
-
-		// write periods to file for gnuplot
-    for(size_t k=0;k<periods1.size();k++) {
-        fprintf(temp1,"%f %x \n",periods1[k].period, periods1[k].phase);
-    }
-    for(size_t k=0;k<periods2.size();k++) {
-        fprintf(temp2,"%f %x \n",periods2[k].period,  periods2[k].phase);
-    }
-
-		cout << "Number of Stars: " << periods1.size()+periods2.size() << endl;
-
-    fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
-    fprintf(gp3, "%s%s%s \n", "set output 'distribution ", to_string(simulationNumber).c_str(), ".eps'");
-    fprintf(gp3, "%s\n", "binwidth=1");
-    fprintf(gp3, "%s\n", "set boxwidth binwidth");
-    fprintf(gp3, "%s\n", "bin(x,width)=width*floor(x/width) + binwidth/2.0");
-    fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Period Distribution","\"");
-    fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
-    fprintf(gp3, "%s \n", "unset xlabel");
-    fprintf(gp3, "%s \n", "set xrange [0:14]");
-    fprintf(gp3, "%s%s %s \n", "set label 1\"","m < 0.25 solar mass","\" at graph 0.8,0.9");
-    fprintf(gp3, "%s \n", "plot 'periods1.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
-    fprintf(gp3, "%s \n", "set xlabel");
-    fprintf(gp3, "%s \n", "set xlabel \"Period (days)\"");
-    fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.8,0.9");
-    fprintf(gp3, "%s \n", "plot 'periods2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
-    fprintf(gp3, "%s \n", "unset multiplot");
-
-		//fprintf(gp3, "%s \n", "plot 'period.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, '' using 2 title 'Col2'");
-
-    fclose(temp1);
-    fclose(temp2);
-}
-
 /**
  * \brief plot observed ONC period distribution
  *
@@ -580,7 +650,7 @@ int main()
 		        vector<vector<double>> simstartable = generatedistribution(startable,1000);
 		        // plotstartable(simstartable, cluster, true);
 
-						for(int simulationNumber = 0; simulationNumber < 1; ++simulationNumber) {
+						for(int simulationNumber = 0; simulationNumber < 4; ++simulationNumber) {
 							simulation(simstartable, simulationNumber);
 						}
 

@@ -1,7 +1,7 @@
 /**
  * \file ttauristar.hpp
  *
- * \authors Cynthia Yan with additions by Shion Andrew
+ * \authors Cynthia Yan (18'), Shion Andrew
  *
  * \brief Declares the TTauriStar class.
  */
@@ -21,8 +21,10 @@
 #include <sys/stat.h>
 #include <vector>
 #include <unistd.h>
-
+#include <tuple>
+#include <string>
 using namespace std;
+
 /**
  * \class TTauriStar
  *
@@ -37,7 +39,8 @@ class TTauriStar {
 public:
 
 	/**
-	 * \brief Parameterized constructor for T Tauri Star
+	 * \brief Parameterized constructor for T Tauri Star. Initializes input parameters, as well as ages_ and
+	 *  acceffs_ based on assumption that there is no accretion until propstarttime (no propellar phase)
 	 *
 	 * \param cmktable: a
 	 * \param mass: final mass of star
@@ -51,9 +54,10 @@ public:
 	/**
 	 * \brief update runs the simulation for each star until convergence.
 	 *
-	 * \returns period
+	 * \returns vector with period and phase
 	 */
-	double update();
+
+	vector<double> update();
 
 	/**
 	 * \brief getvector fetches various evolutionary vectors for each star,
@@ -103,6 +107,7 @@ public:
 
 
 private:
+	double calculatecriticaldensity();
 	double calculatemassdot();
 	double calculateradius();
 	double calculatebfield();
@@ -111,23 +116,26 @@ private:
 	void calculatemasses();
 	void calculateperiods();
 
-	// TTauriStar data members (Matrix)
-	vector<vector<double>> cmktable_;
-	double mass_;								/// (solar masses)
-	double mass0_;              /// (solar mass) mass that we are trying to converge to, equal to the original input mass
-	double mass2_;              /// (solar mass) mass calculated going forward to test for convergence against mass0
-	double age_;								/// Myears
-	double massdotfactor_;      /// equal to the original input parameter
-	double bfieldstrength_;			/// (KGauss)
-	double massdot_;            /// M_sun/yr
-	double period_;							/// days
-	double radius_;							/// R_sun
-	double bfield_;							/// seems like kG from rm calculation
-	double rm_;									/// R_sun
-	double periodrm_;						/// days
-	double diskdensity_;        /// surface density at R_M, g/cm^2
-	double propendtime_;        /// end time for the propeller effect
-	double acceff_;             /// fraction of deposition by accretion
+
+	vector<vector<double>> cmktable_; // TTauriStar data members (Matrix)
+
+	// data members at a given step in time
+	double mass_;											/// (solar masses)
+	double mass0_;            			  /// (solar mass) mass that we are trying to converge to, equal to the original input mass
+	double mass2_;             				/// (solar mass) mass calculated going forward to test for convergence against mass0
+	double age_;											/// Myears
+	double massdotfactor_;      			/// equal to the original input parameter
+	double bfieldstrength_;						/// (KGauss)
+	double massdot_;            			/// M_sun/yr
+	double period_;										/// days
+	double radius_;										/// R_sun
+	double bfield_;										/// KGauss
+	double rm_;												/// R_sun
+	double periodrm_;									/// days
+	double diskdensity_;        			/// surface density at R_M, g/cm^2
+	double propstarttime_;						/// start time for the propellar effect
+	double propendtime_;        			/// end time for the propeller effect
+	double acceff_;            				/// fraction of deposition by accretion
 	bool valid_;  /// if the mass is > 3, there are not values in the table, so we drop stars with those masses.
 	//This should be changed in the future with better data tables.
 
