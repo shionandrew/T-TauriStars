@@ -166,12 +166,8 @@ double TTauriStar::calculaterm()
 double TTauriStar::calculatediskdensity()
 {
 	// density of accretion disk at rm
-
-	// ORIGINAL
 	return 5.2*pow(ALPHA,-4.0/5.0)*pow(6.34*1e9*massdot_,0.7)*pow(mass_,0.25)*pow(rm_*6.957,-0.75)*pow(1.0-pow(radius_/rm_,0.5),7.0/10.0);
 
-	// ERIC'S CODE:
-	//return 5.2*pow(ALPHA,-4.0/5.0)*pow(1.98*1e2*massdot_,0.7)*pow(mass_,0.25)*pow(rm_*6.957,-0.75)*pow(1.0-pow(radius_/rm_,0.5),7.0/10.0);
 }
 
 double TTauriStar::calculatecriticaldensity() {

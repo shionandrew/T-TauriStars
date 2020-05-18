@@ -8,7 +8,6 @@
 
 #include "ttauristar.hpp"
 #include <stdio.h>
-#include <gsl/gsl_sf_bessel.h>
 
 using namespace std;
 
@@ -105,18 +104,18 @@ for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 /**
  * \brief returns stars in periods vector that have specified phase
  *
- * \param starData struct periods to be sorted, phaseNumber specifying desired phase
+ * \param starData struct periods to be sorted, phaseNumber specifying desired phase, logDistribution = 0 if periods are to be plotted logarithmically, 1 if not logarithmic
  * \returns subset of starData struct periods that have specified phase
  */
  vector<starData> sortPhase(vector<starData> periods, int phaseNumber)
  {
-	 vector<starData> sortedPeriods;
-	 for(size_t star = 0; star<periods.size(); ++star) {
-		 if(periods[star].phase == phaseNumber){
-			 sortedPeriods.push_back(periods[star]);
-		 }
+	vector<starData> sortedPeriods;
+	for(size_t star = 0; star<periods.size(); ++star) {
+		if(periods[star].phase == phaseNumber){
+			sortedPeriods.push_back(periods[star]);
+		}
 	 }
-	 return sortedPeriods;
+	return sortedPeriods;
  }
 
 
@@ -130,7 +129,7 @@ for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
  */
 void plothistogram(vector<starData> periods1, vector<starData>periods2, int simulationNumber)
 {
-		vector<vector<starData>> periods1Data = populateBuckets(periods1, 14 ,1, simulationNumber);
+	  vector<vector<starData>> periods1Data = populateBuckets(periods1, 14 ,1, simulationNumber);
 		vector<vector<starData>> periods2Data = populateBuckets(periods2, 14 ,1, simulationNumber);
 
 		vector<starData> periods1_4 = sortPhase(periods1, 4);
@@ -207,10 +206,10 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
     fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Period Distribution","\"");
     fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
     fprintf(gp3, "%s \n", "unset xlabel");
-    fprintf(gp3, "%s \n", "set xrange [0:14]");
+    //fprintf(gp3, "%s \n", "set xrange [0:14]");
     fprintf(gp3, "%s%s %s \n", "set label 1\"","m < 0.25 solar mass","\" at graph 0.8,0.9");
     fprintf(gp3, "%s \n", "plot 'periods1.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods1_4.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
-    fprintf(gp3, "%s \n", "set xlabel \"Period (days)\"");
+    fprintf(gp3, "%s \n", "set xlabel \"Period (ln(days))\"");
     fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.8,0.9");
     fprintf(gp3, "%s \n", "plot 'periods2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_4.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_3.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
     fprintf(gp3, "%s \n", "unset multiplot");
@@ -221,6 +220,178 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
     fclose(temp2);
 }
 
+/**
+ * \brief plot period histogram with log scale on the x axis, color codes locked vs unlocked stars
+ *
+ * \param periods1 for stars with mass < 0.25 and periods2 for stars with mass > 0.25
+ * \returns
+ * Added 4/5/20 by Mia Taylor, edited by Shion Andrew
+ * gnuplot commands largely based on this:
+ * https://stackoverflow.com/questions/24207850/gnuplot-histogram-x-logscale
+ */
+ void plotlogscalehistogramWithPhase(vector<starData> periods1, vector<starData>periods2)
+{
+	// sort stars by phase
+	vector<starData> periods1_4 = sortPhase(periods1, 4);
+	vector<starData> periods1_3 = sortPhase(periods1, 3);
+	vector<starData> periods1_2 = sortPhase(periods1, 2);
+	vector<starData> periods1_1 = sortPhase(periods1, 1);
+	vector<starData> periods2_4 = sortPhase(periods2, 4);
+	vector<starData> periods2_3 = sortPhase(periods2, 3);
+	vector<starData> periods2_2 = sortPhase(periods2, 2);
+	vector<starData> periods2_1 = sortPhase(periods2, 1);
+
+	// Create vector for locked stars (M < 0.25)
+	vector<double> period1_lockedVector;
+	for(size_t k = 0; k< periods1_1.size(); ++k){
+		period1_lockedVector.push_back(periods1_1[k].period);
+	}
+	for(size_t k = 0; k< periods1_2.size(); ++k){
+		period1_lockedVector.push_back(periods1_2[k].period);
+	}
+	for(size_t k = 0; k< periods1_3.size(); ++k){
+		period1_lockedVector.push_back(periods1_3[k].period);
+	}
+
+	// Create vector for locked stars (M > 0.25)
+	vector<double> period2_lockedVector;
+	for(size_t k = 0; k< periods2_1.size(); ++k){
+		period2_lockedVector.push_back(periods2_1[k].period);
+	}
+	for(size_t k = 0; k< periods2_2.size(); ++k){
+		period2_lockedVector.push_back(periods2_2[k].period);
+	}
+	for(size_t k = 0; k< periods2_3.size(); ++k){
+		period2_lockedVector.push_back(periods2_3[k].period);
+	}
+
+	// group unlocked stars (M < 0.25)
+	vector<double> period1_unlockedVector;
+	for(size_t k = 0; k< periods1_4.size(); ++k){
+		period1_unlockedVector.push_back(periods1_4[k].period);
+	}
+
+	// group unlocked stars (M > 0.25)
+	vector<double> period2_unlockedVector;
+	for(size_t k = 0; k< periods2_4.size(); ++k){
+		period2_unlockedVector.push_back(periods2_4[k].period);
+	}
+
+  // in case either vector is empty, populate it with a dummy star so minPeriod and maxPeriod doesn't return a segmentation error
+	if(period1_lockedVector.size()==0){
+		period1_lockedVector.push_back(1);
+	}
+  if(period2_lockedVector.size()==0){
+		period2_lockedVector.push_back(1);
+	}
+	if(period1_unlockedVector.size() == 0){
+		period1_unlockedVector.push_back(1);
+	}
+	if(period2_unlockedVector.size() == 0){
+		period2_unlockedVector.push_back(1);
+	}
+
+
+	FILE * temp1_locked = fopen("lockedPeriods1.temp", "w");
+	FILE * temp1_unlocked = fopen("unlockedPeriods1.temp", "w");
+
+	FILE * temp2_locked = fopen("lockedPeriods2.temp", "w");
+	FILE * temp2_unlocked = fopen("unlockedPeriods2.temp", "w");
+
+	FILE* gp3=popen("gnuplot -persistent","w");
+
+  double binsPerDecade = 5;
+  double intervalWidth = pow(10,1/binsPerDecade);
+  // determining the range of the periods
+
+  double minPeriod = min(*std::min_element(period1_lockedVector.begin(), period1_lockedVector.end()),
+                          min( min(*std::min_element(period1_unlockedVector.begin(), period1_unlockedVector.end()),
+												*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())),
+											*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())));
+
+  double maxPeriod = max(*std::max_element(period1_lockedVector.begin(), period1_lockedVector.end()),
+                        max( max(*std::max_element(period1_unlockedVector.begin(), period1_unlockedVector.end()),
+											*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())),
+										*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())));
+
+  // min and max OOM
+  int minOOM = floor(log(minPeriod));
+  int maxOOM = floor(log(maxPeriod))+1; // round down and then add 1
+
+  // with bins of width
+  vector<double> periodbins1_locked;
+  vector<double> periodbins1_unlocked;
+	vector<double> periodbins2_locked;
+	vector<double> periodbins2_unlocked;
+  vector<double> bins;
+
+  for(double i = pow(10,minOOM); i < pow(10,maxOOM); i *= intervalWidth) {
+      periodbins2_locked.push_back(0);
+      periodbins2_unlocked.push_back(0);
+			periodbins1_locked.push_back(0);
+			periodbins1_unlocked.push_back(0);
+      bins.push_back(i);
+  }
+
+	for(size_t k=0;k<period1_lockedVector.size();k++) {
+			size_t binIndex = floor((log(period1_lockedVector[k]) - minOOM)*binsPerDecade);
+			++periodbins1_locked[binIndex];
+	}
+
+	for(size_t k=0;k<period1_unlockedVector.size();k++) {
+      size_t binIndex = floor((log(period1_unlockedVector[k]) - minOOM)*binsPerDecade);
+      ++periodbins1_unlocked[binIndex];
+  }
+
+  for(size_t k=0;k<period2_lockedVector.size();k++) {
+      size_t binIndex = floor((log(period2_lockedVector[k]) - minOOM)*binsPerDecade);
+      ++periodbins2_locked[binIndex];
+  }
+
+  for(size_t k=0;k<period2_unlockedVector.size();k++) {
+      size_t binIndex = floor((log(period2_unlockedVector[k]) - minOOM)*binsPerDecade);
+      ++periodbins2_unlocked[binIndex];
+  }
+
+	// printing to files
+  for(size_t k=0;k<periodbins1_locked.size();k++) {
+      fprintf(temp1_locked,"%f %f \n",bins[k],periodbins1_locked[k]);
+  }
+	// printing to files
+	for(size_t k=0;k<periodbins1_unlocked.size();k++) {
+			fprintf(temp1_unlocked,"%f %f \n",bins[k],periodbins1_unlocked[k]);
+	}
+
+  // printing to files
+  for(size_t k=0;k<periodbins2_locked.size();k++) {
+      fprintf(temp2_locked,"%f %f \n",bins[k],periodbins2_locked[k]);
+  }
+	// printing to files
+	for(size_t k=0;k<periodbins2_unlocked.size();k++) {
+			fprintf(temp2_unlocked,"%f %f \n",bins[k],periodbins2_unlocked[k]);
+	}
+
+
+  fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+  fprintf(gp3, "%s \n", "set output 'distributionlogscale.eps'");
+  fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+  fprintf(gp3, "%s \n", "set output 'distributionlogscale.eps'");
+  fprintf(gp3, "%s\n", "set logscale x");
+  fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Period Distribution","\"");
+  fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
+  fprintf(gp3, "%s \n", "unset xlabel");
+  fprintf(gp3, "%s%s %s \n", "set label 1\"","m < 0.25 solar mass","\" at graph 0.85,0.8");
+  fprintf(gp3, "%s \n", "plot 'lockedPeriods1.temp' using 1:2:($1*0.4) with boxes title 'locked', 'unlockedPeriods1.temp' using 1:2:($1*0.4) with boxes title 'unlocked'");
+  fprintf(gp3, "%s \n", "set xlabel");
+  fprintf(gp3, "%s \n", "set xlabel \"Period (days)\"");
+  fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.85,0.8");
+  fprintf(gp3, "%s \n", "plot 'lockedPeriods2.temp' using 1:2:($1*0.4) with boxes title 'locked', 'unlockedPeriods2.temp' using 1:2:($1*0.4) with boxes title 'unlocked'");
+  fprintf(gp3, "%s \n", "unset multiplot");
+
+  fclose(temp2_locked);
+  fclose(temp2_unlocked);
+
+}
 
 /**
  * \brief read cmk data file
@@ -573,7 +744,8 @@ void simulation(vector<vector<double>> simstartable, int simulationNumber)
     duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
     cout<<"the program takes "<< duration << " s" << endl;
     // plot
-    plothistogram(periods1, periods2, simulationNumber);
+		plothistogram(periods1, periods2, simulationNumber);
+    plotlogscalehistogramWithPhase(periods1, periods2);
 }
 
 
@@ -650,7 +822,7 @@ int main()
 		        vector<vector<double>> simstartable = generatedistribution(startable,1000);
 		        // plotstartable(simstartable, cluster, true);
 
-						for(int simulationNumber = 0; simulationNumber < 4; ++simulationNumber) {
+						for(int simulationNumber = 0; simulationNumber < 1; ++simulationNumber) {
 							simulation(simstartable, simulationNumber);
 						}
 
