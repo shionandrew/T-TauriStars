@@ -17,14 +17,14 @@
 
 using namespace std;
 
-double const TIMESTEP = 0.005;       /// timestep (Myrs) fraction of age
+double const TIMESTEP = 0.001;       /// timestep (Myrs) fraction of age
 double const ALPHA = 0.01;           /// viscocity parameter
 double const BETA = 1.35;            /// R_M/R_A
 double const GAMMA = 1.0;            /// R_C/R_M
-//double const SHAPEFACTOR = 0.17;     /// f in the rotational inertia I=fMR^2
+double const SHAPEFACTOR = 0.17;     /// f in the rotational inertia I=fMR^2
 double const PROPEFF = 0.3;          /// propeller coefficient
 double const CRITICALDENSITYCOEFF = 1.2e22;  /// Adjustable parameter "A" (T^1/2*cm^-1/2) used to determine critical density
-//double const PROPSTARTTIME = 0.05;   /// B-field turn-on time (Mrs); simulation starts at this time
+double const PROPSTARTTIME = 0.05;   /// B-field turn-on time (Mrs); simulation starts at this time
 // double const TURNONTIME = 0.049;      /// should be the same as above
 //double const PROPTIMESPREAD = 0.002; /// introduce randomness for PROPSTARTTIME
 double const DELTAM = 0.001;            /// deltam to determine when to stop mass iterations
@@ -35,7 +35,7 @@ double const MAXITERATIONS = 50; // maximum number of iterations
 
 
 TTauriStar::TTauriStar(vector<vector<double>> cmktable,
-	double mass, double age, double massdotfactor, double bfieldstrength)
+	double mass, double age, double massdotfactor, double bfieldstrength, double timestep)
 	// initilizing private member variables
     :cmktable_(cmktable), mass_(mass), mass0_(mass), mass2_(0),
      age_(age), massdotfactor_(massdotfactor), bfieldstrength_(bfieldstrength)
@@ -51,13 +51,14 @@ TTauriStar::TTauriStar(vector<vector<double>> cmktable,
 	} else {
 		valid_ = true;
 	}
+	timestep_ = timestep;
 
-	random_device rd1;  //Will be used to obtain a seed for the random number engine
-	mt19937 genp(rd1()); //Standard mersenne_twister_engine seeded with rd(
-	uniform_real_distribution<double> proptimeDist(0.048,0.052);
-	propstarttime_ = proptimeDist(genp);
+	//random_device rd1;  //Will be used to obtain a seed for the random number engine
+	//mt19937 genp(rd1()); //Standard mersenne_twister_engine seeded with rd(
+	//uniform_real_distribution<double> proptimeDist(0.048,0.052);
+	//propstarttime_ = proptimeDist(genp);
 
-	///propstarttime_ = PROPSTARTTIME;
+	propstarttime_ = PROPSTARTTIME;
 
 	// initially set propeller endtime to be the same as starttime (no phase 2)
 	propendtime_ = propstarttime_;
@@ -76,7 +77,7 @@ TTauriStar::TTauriStar(vector<vector<double>> cmktable,
 		acceffs_.push_back(acceff_);
 
 		// calculate new age
-		age_ -= TIMESTEP;
+		age_ -= timestep_;
 	}
 
 	// reverse the two vectors to be in forward time order
@@ -193,7 +194,7 @@ void TTauriStar::calculatemasses()
 		// calculate mass accretion rate
 		massdot_ = calculatemassdot();
 		// calculate new mass
-		mass_ -= 1.0e6*massdot_*acceff_*TIMESTEP;
+		mass_ -= 1.0e6*massdot_*acceff_*timestep_;
 		// push_back the mass into the masses vector
 		// will reversed after all the push_backs are done for efficiency
 		masses_.push_back(mass_);
@@ -204,6 +205,10 @@ void TTauriStar::calculatemasses()
 
 void TTauriStar::calculateperiods()
 {
+	// MT -- TEMPORARY -- open file:
+	FILE * temp = fopen("period_change_RStar.temp","w");
+	vector<double> periodChange;
+	
 	// clear vectors involved
 	periods_.clear();
 	massdots_.clear();
@@ -213,6 +218,8 @@ void TTauriStar::calculateperiods()
 	acceffs_.clear();
 	phase_.clear();
 	rmPeriods_.clear();
+	perioddots_.clear();
+	keplerianPeriods_.clear();
 
 	// initialze mass2_
 	mass2_ = masses_[0];
@@ -257,13 +264,13 @@ void TTauriStar::calculateperiods()
 
 		// Phase 2: spin down due to propeller effect
 	} else if (period_ < periodrm_ && phase <= 2 && diskdensity_ > criticaldensity) {
-			period_ += TIMESTEP*PROPEFF*0.972*pow(BETA,-3.)*pow(period_,2.)*pow(mass_,-4./7.)*pow(bfield_,2./7.)*pow(radius_,-8./7.)*pow(massdot_/1.e-8,6./7.);
+			period_ += timestep_*PROPEFF*0.972*pow(BETA,-3.)*pow(period_,2.)*pow(mass_,-4./7.)*pow(bfield_,2./7.)*pow(radius_,-8./7.)*pow(massdot_/1.e-8,6./7.);
 			// keep track of the propeller endtime
 			propendtime_ = age_;
 			// doesn't accrete
 			acceff_ = 0;
 			phase = 2;
-
+			
 		// Phase 3: disk-locked
 		} else if (diskdensity_ > criticaldensity && phase <= 3) {
 			//cout << criticaldensity << endl;
@@ -276,17 +283,52 @@ void TTauriStar::calculateperiods()
 		// Phase 4: unlocked
 		} else {
 			// G in units of (solar radius^3)/(day^2 solarmass) G = 2937.5
-			acceff_ = 0;
-			period_ += period_*2*(radius_-radius)/radius_
-			        +TIMESTEP*1e6*acceff_*period_*massdot_/mass_
-				-50.74*TIMESTEP*1e6*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(rm_,0.5)*pow(radius_,-2.);
+			acceff_ = 1;
+
+			// version where accretion happens at magnetospheric radius
+			// double periodChange = (TIMESTEP*acceff_*period_*massdot_/mass_
+			// 	-50.74*TIMESTEP*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(rm_,0.5)*pow(radius_,-2.))/TIMESTEP;
+
+			// period_ += period_*2*(radius_-radius)/radius_
+			//         +TIMESTEP*acceff_*period_*massdot_/mass_
+			// 	-50.74*TIMESTEP*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(rm_,0.5)*pow(radius_,-2.);
+
+
+
+			// version where we assume accretion happens at the surface of the star
+			//    double periodChange = (TIMESTEP*acceff_*period_*massdot_/mass_
+			//    	-50.74*TIMESTEP*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(radius_,-1.5))/TIMESTEP;
+
+			   period_ += period_*2*(radius_-radius)/radius_  
+			   		+timestep_*acceff_*period_*massdot_/mass_
+			 	-50.74*timestep_*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(radius_,-1.5)/(2*3.1415*SHAPEFACTOR);
+
+			// fprintf(temp, "%f %f \n", age_, periodChange);
+
+			// version where we neglect final term
+			// period_ += period_*2*(radius_-radius)/radius_
+			// 		   +TIMESTEP*acceff_*period_*massdot_/mass_;
+
+		   	// phase = 4;
+			
+			//period_ += period_*2*(radius_-radius)/radius_
+			//        +TIMESTEP*1e6*acceff_*period_*massdot_/mass_
+			//	-50.74*TIMESTEP*1e6*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(rm_,0.5)*pow(radius_,-2.);
 			 phase = 4;
 		}
 
 		// calculate mass moving forward
 		if (i < ages_.size() - 1) {
-			mass2_ += 1.0e6*massdot_*acceff_*TIMESTEP;
+			mass2_ += 1.0e6*massdot_*acceff_*timestep_;
 		}
+		
+		// finding and storing perioddot
+		if (periods_.empty()) {
+			perioddots_.push_back(0); // placeholder
+		} else {
+			perioddots_.push_back((period_ - periods_.back())/timestep_);
+		}
+		
 		// store the period
 		periods_.push_back(period_);
 		massdots_.push_back(massdot_);
@@ -296,7 +338,11 @@ void TTauriStar::calculateperiods()
 		acceffs_.push_back(acceff_);
 		phase_.push_back(phase);
 		rmPeriods_.push_back(periodrm_);
+
+		keplerianPeriods_.push_back(0.1159*pow(radius_,3./2.)*pow(mass_,-1./2.));
+
 	}
+	fclose(temp);
 }
 
 vector<double> TTauriStar::update()
@@ -365,6 +411,14 @@ vector<double> TTauriStar::getvector(int n)
 		output = rmPeriods_;
 	}
 
+	if (n == 11) {
+		output = perioddots_;
+	}
+
+	if (n == 12) {
+		output = keplerianPeriods_;
+	}
+
 	return output;
 }
 
@@ -400,6 +454,12 @@ string TTauriStar::getname(int n)
 	}
 	if (n==10) {
 		output = "R_mPeriods";
+	}
+	if (n==11) {
+		output = "Period_Dot";
+	}
+	if (n==12) {
+		output = "Kepler_Period";
 	}
 
 	return output;
@@ -437,6 +497,14 @@ string TTauriStar::getunit(int n)
 	}
 
 	if (n==10) {
+		output = "days";
+	}
+
+	if (n==11) {
+		output = "days/Myr";
+	}
+
+	if (n==12) {
 		output = "days";
 	}
 

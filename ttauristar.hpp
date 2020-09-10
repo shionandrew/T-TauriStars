@@ -49,7 +49,7 @@ public:
 	 * \param bfieldstrength:
 	 */
 	TTauriStar(vector<vector<double>> cmktable, double mass, double age,
-		double massdotfactor, double bfieldstrength);
+		double massdotfactor, double bfieldstrength, double timestep);
 
 	/**
 	 * \brief update runs the simulation for each star until convergence.
@@ -138,6 +138,7 @@ private:
 	double acceff_;            				/// fraction of deposition by accretion
 	bool valid_;  /// if the mass is > 3, there are not values in the table, so we drop stars with those masses.
 	//This should be changed in the future with better data tables.
+	double timestep_; 		// timestep (in Myrs)
 
 	vector<double> ages_;
 	vector<double> masses_;         /// mass of the protostar changed backward
@@ -149,6 +150,8 @@ private:
 	vector<double> diskdensities_;
 	vector<double> phase_;					// vector storing "phases" the star. Solely for the purpose of understanding the stages of the star's evolution in our graph
 	vector<double> rmPeriods_;			// stores keplerian period calculated at magnetospheric radius (days)
+	vector<double> perioddots_;
+	vector<double> keplerianPeriods_;
 };
 
 #endif
