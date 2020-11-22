@@ -25,21 +25,22 @@ double const SHAPEFACTOR = 0.17;     /// f in the rotational inertia I=fMR^2
 double const PROPEFF = 0.3;          /// propeller coefficient
 double const CRITICALDENSITYCOEFF = 1.2e22;  /// Adjustable parameter "A" (T^1/2*cm^-1/2) used to determine critical density
 double const PROPSTARTTIME = 0.05;   /// B-field turn-on time (Mrs); simulation starts at this time
-// double const TURNONTIME = 0.049;      /// should be the same as above
+//double const TURNONTIME = 0.049;      /// should be the same as above
 //double const PROPTIMESPREAD = 0.002; /// introduce randomness for PROPSTARTTIME
 double const DELTAM = 0.001;            /// deltam to determine when to stop mass iterations
 double const ACCPOWER = -2.1;		// new parameter to investigate accretion efficiency
 double const DEFAULTAGE = 1; 		/// default age of 1 million (for when user inputs age less than or equal to zero)
 double const MAXITERATIONS = 50; // maximum number of iterations
-
-
+double const GRAMS_TO_SOLAR_MASS = 5.02785*pow(10,-34); // conversion factor from grams to solar mass
+double const SECONDS_TO_MYR = 3.17098*pow(10,-14); // conversion factor from seconds to Myr
+double const CM_TO_SOLAR_RADIUS = 1.437*pow(10,-11); // conversion factor from cm to solar radius
+double const G = 2937.5; // G in units of (solar radius^3)/(day^2 solarmass)
 
 TTauriStar::TTauriStar(vector<vector<double>> cmktable,
-	double mass, double age, double massdotfactor, double bfieldstrength, double timestep)
+	double mass, double age, double massdotfactor, double bfieldstrength, double timestep, bool Romanova)
 	// initilizing private member variables
     :cmktable_(cmktable), mass_(mass), mass0_(mass), mass2_(0),
-     age_(age), massdotfactor_(massdotfactor), bfieldstrength_(bfieldstrength)
-
+     age_(age), massdotfactor_(massdotfactor), bfieldstrength_(bfieldstrength),Romanova_(Romanova)
 	{
 	// set age to default age if input age is invalid
 	if (age_ <= 0) {
@@ -64,7 +65,7 @@ TTauriStar::TTauriStar(vector<vector<double>> cmktable,
 	propendtime_ = propstarttime_;
 
   // assuming accretion is on at start
-	acceff_ = 1;
+	acceff_ = 0;
 
 	// save initial values of age and acceff in the corresponding vectors
 	// go backwards in time
@@ -164,6 +165,8 @@ double TTauriStar::calculaterm()
 	// radius at which ram pressure equals magnetic pressure*BETA (magnetispheric radius)
 }
 
+
+
 double TTauriStar::calculatediskdensity()
 {
 	// density of accretion disk at rm
@@ -210,6 +213,7 @@ void TTauriStar::calculateperiods()
 	vector<double> periodChange;
 	
 	// clear vectors involved
+	periods_Romanova_.clear();
 	periods_.clear();
 	massdots_.clear();
 	radii_.clear();
@@ -225,8 +229,13 @@ void TTauriStar::calculateperiods()
 	mass2_ = masses_[0];
 	// initialize radius_ !!!!!
 	mass_ = masses_[0];
+
 	age_ = ages_[0];
+
 	radius_ = calculateradius();
+
+
+
 	massdot_ = calculatemassdot();
 	// initial phase
 	size_t phase = 1;
@@ -243,11 +252,12 @@ void TTauriStar::calculateperiods()
 
 		// update data members
 		massdot_ = calculatemassdot();
-		double radius = radius_;
+		double radius = radius_;	
 		radius_ = calculateradius();
 		bfield_ = calculatebfield();
 		rm_ = calculaterm();
 		diskdensity_ = calculatediskdensity();
+		radiusdot_ = (radius_-radius)/timestep_;
 
 		// calculate the Keplerian period at rm
 		periodrm_ = 0.1159*pow(rm_,3./2.)*pow(mass_,-1./2.);
@@ -261,29 +271,60 @@ void TTauriStar::calculateperiods()
 	    	period_ = 0.1159*pow(radius_,3./2.)*pow(mass_,-1./2.);
 	    	// assume accretion at start
 	    	acceff_ = 1;
-
+			period_Romanova_ = period_;
 		// Phase 2: spin down due to propeller effect
-	} else if (period_ < periodrm_ && phase <= 2 && diskdensity_ > criticaldensity) {
-			period_ += timestep_*PROPEFF*0.972*pow(BETA,-3.)*pow(period_,2.)*pow(mass_,-4./7.)*pow(bfield_,2./7.)*pow(radius_,-8./7.)*pow(massdot_/1.e-8,6./7.);
-			// keep track of the propeller endtime
-			propendtime_ = age_;
+		} else if (period_ < periodrm_ && phase <= 2 && diskdensity_ > criticaldensity) {
 			// doesn't accrete
+			//if (acceff_ = 1){
+			//	cout << (rm_/radius_)/60 << endl;
+			//	cout << periodrm_/period_ << endl;
+			//	double mu = (rm_/radius_)/60;
+			//	double omega = periodrm_/period_;
+			//	cout << 3.5*pow(10,34)*pow(mu,-2)*pow(bfield_,2)*pow(radius_/2,3)*GRAMS_TO_SOLAR_MASS*pow(CM_TO_SOLAR_RADIUS,2)*86400/SECONDS_TO_MYR << endl;
+			//}
 			acceff_ = 0;
+			//double PdotTerm1 = 2*radius_*radiusdot_*mass_*period_/(mass_*pow(radius_,2));
+			double mu = (rm_/radius_)/60;
+			double omega = periodrm_/period_;
+			//acceff_ = 1-(0.57*pow(omega,.3));
+			double PdotTerm1 = ((massdot_*acceff_*pow(radius_,2)+2*radius_*radiusdot_*mass_)*period_)/(mass_*pow(radius_,2));
+			double R0 = 1.4*pow(10,11)*CM_TO_SOLAR_RADIUS;
+			double romanovaL = pow(mu,-2)*pow(bfield_,2)*pow(R0/CM_TO_SOLAR_RADIUS,3)*pow(radius_/R0,6)*GRAMS_TO_SOLAR_MASS*pow(CM_TO_SOLAR_RADIUS,2)*86400/SECONDS_TO_MYR;
+			//double romanovaL = 7.61*pow(10,35)*pow(mu,-2)*GRAMS_TO_SOLAR_MASS*pow(CM_TO_SOLAR_RADIUS,2)*86400/SECONDS_TO_MYR; // units of solar mass * (solar radius)^2/(days*Myr)
+			//double romanovaL = 3.5*pow(10,34)*pow(mu,-2)*pow(bfield_,2)*pow(radius_/2,3)*GRAMS_TO_SOLAR_MASS*pow(CM_TO_SOLAR_RADIUS,2)*86400/SECONDS_TO_MYR;
+			double romanovaTorque = 0.51*pow(omega,.99)*romanovaL;
+			if (Romanova_) {
+				period_ += timestep_*PdotTerm1 + timestep_*romanovaTorque*pow(period_,2)/(2*3.14*SHAPEFACTOR*mass_*pow(radius_,2));
+			}
+			else{
+				period_ += timestep_*PdotTerm1 + timestep_*PROPEFF*0.972*pow(BETA,-3.)*pow(period_,2.)*pow(mass_,-4./7.)*pow(bfield_,2./7.)*pow(radius_,-8./7.)*pow(massdot_/1.e-8,6./7.);
+			}
+			//cout << "Romanava Torque:" << romanavaTorque*pow(period_,2)/(2*3.14*SHAPEFACTOR*mass_*pow(radius_,2)) << endl;
+			//period_Romanava_ += timestep_*romanavaTorque*pow(period_Romanava_,2)/(2*3.14*SHAPEFACTOR*mass_*pow(radius_,2));
+			//double ourTorque = 2*3.14*1.44385*pow(BETA,-3.)*pow(mass_,3./7.)*pow(bfield_,2./7.)*pow(radius_,6./7.)*pow(massdot_/1.e-8,6./7.);
+			//if (romanavaTorque < ourTorque) {
+			//	cout << romanavaTorque << endl;
+			//cout << "Our Torque:" << ourTorque << endl;
+			// keep track of the propeller endtime
+			
+			propendtime_ = age_;			
 			phase = 2;
 			
 		// Phase 3: disk-locked
 		} else if (diskdensity_ > criticaldensity && phase <= 3) {
+			//if (phase == 2) {
+			//	cout << age_ << endl;
+			//}
 			//cout << criticaldensity << endl;
 			// condition for turning on propellar effect is w(Rc) = Req = gamma Rcm.
 			period_ = 8.*pow(GAMMA*BETA/0.9288,3./2.)*pow(massdot_/1.0e-8,-3./7.)*pow(mass_/0.5,-5./7.)*pow(radius_/2.,18./7.)*pow(bfield_,6./7.);
 			phase = 3;
 			acceff_ = 1;
-
+			period_Romanova_ = period_;
 
 		// Phase 4: unlocked
 		} else {
-			// G in units of (solar radius^3)/(day^2 solarmass) G = 2937.5
-			acceff_ = 1;
+			acceff_ = 0;
 
 			// version where accretion happens at magnetospheric radius
 			// double periodChange = (TIMESTEP*acceff_*period_*massdot_/mass_
@@ -302,7 +343,12 @@ void TTauriStar::calculateperiods()
 			   period_ += period_*2*(radius_-radius)/radius_  
 			   		+timestep_*acceff_*period_*massdot_/mass_
 			 	-50.74*timestep_*acceff_*pow(period_,2)*massdot_*pow(mass_,-0.5)*pow(radius_,-1.5)/(2*3.1415*SHAPEFACTOR);
+				double breakupPeriod = 0.1159*pow(radius_,3./2.)*pow(mass_,-1./2.);
+				if(period_ < breakupPeriod){
+					period_ = breakupPeriod;
+				}
 
+				period_Romanova_ = period_;
 			// fprintf(temp, "%f %f \n", age_, periodChange);
 
 			// version where we neglect final term
@@ -331,6 +377,9 @@ void TTauriStar::calculateperiods()
 		
 		// store the period
 		periods_.push_back(period_);
+		periods_Romanova_.push_back(period_Romanova_);
+		propellerStrength_ = periodrm_/period_;
+		propellerStrengths_.push_back(propellerStrength_);
 		massdots_.push_back(massdot_);
 		radii_.push_back(radius_);
 		rms_.push_back(rm_);
@@ -347,7 +396,7 @@ void TTauriStar::calculateperiods()
 
 vector<double> TTauriStar::update()
 {
-	std::vector<double> dataVector;
+	vector<double> dataVector; // holds data to return 
 	if (valid_) {
 		// keep track of the number of iterations
 		int numIterations = 0;
@@ -368,7 +417,7 @@ vector<double> TTauriStar::update()
 		}
 	}
 	else {
-		std::cout << "Age: " << age_ << std::endl;
+		cout << "Age: " << age_ << endl;
 		cout << "Star is not valid" << endl;
 		dataVector.push_back(0);
 		dataVector.push_back(0);
@@ -418,6 +467,12 @@ vector<double> TTauriStar::getvector(int n)
 	if (n == 12) {
 		output = keplerianPeriods_;
 	}
+	if (n == 13) {
+		output = propellerStrengths_;
+	}
+	if (n==14) {
+		output = periods_Romanova_;
+	}
 
 	return output;
 }
@@ -461,7 +516,12 @@ string TTauriStar::getname(int n)
 	if (n==12) {
 		output = "Kepler_Period";
 	}
-
+	if (n==13) {
+		output = "Propeller Strength";
+	}
+	if (n==14) {
+		output = "Period_PropAccretion_";
+	}
 	return output;
 }
 
@@ -507,10 +567,20 @@ string TTauriStar::getunit(int n)
 	if (n==12) {
 		output = "days";
 	}
-
+	if (n==13) {
+		output = "v_s_t_a_r / v_d_i_s_k";
+	}
+	if (n==14) {
+		output = "days";
+	}
 	return output;
 }
-
+/**
+ * \brief plot parameters of a single star
+ *
+ * \inputs: m - x axis
+ * 			n - y axis
+ */
 void TTauriStar::plot(int m, int n)
 
 {
@@ -522,27 +592,27 @@ void TTauriStar::plot(int m, int n)
 	myfile.open(title);
 
 	//stringstream plotNameStream;
-	//plotNameStream << std::fixed << setprecision(2);
+	//plotNameStream << fixed << setprecision(2);
 	//plotNameStream << title;
 	//string plotName = plotNameStream.str();
 
+	// construct log-log plot for accretion rate
 	if(getname(n) == "AccretionRate1") {
 		//generate a log-log plot
 		vector<double> yVectorLog = yVector;
 		//vector<double> xVectorLog = xVector;
 
 		for(size_t k=0; k<yVector.size(); k++) {
-			yVectorLog[k] = log(yVector[k]);
-			//xVectorLog[k] = log(xVector[k]);
-			myfile<<std::to_string(xVector[k])<< " " << std::to_string(yVectorLog[k]) << endl; //save table data to myfile
+			yVectorLog[k] = log10(yVector[k]);
+			myfile<<to_string(xVector[k])<< " " << to_string(yVectorLog[k]) << endl; //save table data to myfile
 		}
-		//plotNameStream << " SLOPE_" << std::to_string(slope(xVector, yVectorLog));
+		//plotNameStream << " SLOPE_" << to_string(slope(xVector, yVectorLog));
 		//plotName = plotNameStream.str();
 		myfile.close();
 
 		FILE* gp=popen("gnuplot -persistent","w"); //popen opens a plotting window
 
-		fprintf(gp, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+		fprintf(gp, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,20'");
 		fprintf(gp, "%s'%s.%s' \n", "set output", title.c_str(), "eps");
 		// To create a screen output remove previous two lines, but then this image cannot be saved.
 		fprintf(gp, "%s%s %s %s%s\n", "set title \"",getname(n).data(),"vs",getname(m).data(),"\"");
@@ -552,11 +622,41 @@ void TTauriStar::plot(int m, int n)
 		fprintf(gp, "plot '%s'\n", title.c_str());
 
 	}
+	
+	// construct overlaid plot for romanavaPeriods
+	else if(n == 14) {
+		for(size_t k=0;k<xVector.size();k++) {
+			//myfile<< to_string(yVector[k]) << endl; //save table data to myfile
+			myfile<< to_string(xVector[k])<<" " << to_string(yVector[k]) << endl; //save table data to myfile
+		}
+		myfile.close();
 
+		string title2 = getname(3); //overlay regular period plot
+		// FILE * temp = fopen("data.temp", "w"); // * is for a pointer; "w" means write, could also be "r" for read.
+		FILE* gp=popen("gnuplot -persistent","w"); //popen opens a plotting window
+
+		// for(size_t k=0;k<xVector.size();k++) {
+		//         fprintf(temp,"%f %f \n",xVector[k],yVector[k]);
+		// }
+
+
+		fprintf(gp, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,20'");
+		fprintf(gp, "%s'%s.%s' \n", "set output", title.c_str(), "eps");
+		// To create a screen output remove previous two lines, but then this image cannot be saved.
+		fprintf(gp, "%s%s %s %s%s\n", "set title \"",getname(n).data(),"vs",getname(m).data(),"\"");
+
+		fprintf(gp, "%s%s %s%s%s\n", "set xlabel \"",getname(m).data(),"(",getunit(m).data(),")\"");
+		fprintf(gp, "%s%s %s%s%s\n", "set ylabel \"",getname(n).data(),"(",getunit(n).data(),")\"");
+		fprintf(gp, "plot '%s', '%s'\n", title.c_str(), title2.c_str());
+	}
+	
+	
+	
+	
 	else {
 		for(size_t k=0;k<xVector.size();k++) {
-			//myfile<< std::to_string(yVector[k]) << endl; //save table data to myfile
-			myfile<<std::to_string(xVector[k])<<" " << std::to_string(yVector[k]) << endl; //save table data to myfile
+			//myfile<< to_string(yVector[k]) << endl; //save table data to myfile
+			myfile<< to_string(xVector[k])<<" " << to_string(yVector[k]) << endl; //save table data to myfile
 		}
 		myfile.close();
 
@@ -567,10 +667,9 @@ void TTauriStar::plot(int m, int n)
 		//         fprintf(temp,"%f %f \n",xVector[k],yVector[k]);
 		// }
 
-		// fclose(temp);
 
-
-		fprintf(gp, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+		fprintf(gp, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,20'");
+		//fprintf(gp, "%s \n", "set term png");
 		fprintf(gp, "%s'%s.%s' \n", "set output", title.c_str(), "eps");
 		// To create a screen output remove previous two lines, but then this image cannot be saved.
 		fprintf(gp, "%s%s %s %s%s\n", "set title \"",getname(n).data(),"vs",getname(m).data(),"\"");

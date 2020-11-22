@@ -1,22 +1,26 @@
 /**
  * \file simulation.cpp
  *
- * \authors Cynthia Yan ('18'), Shion Andrew
+ * \authors Cynthia Yan ('18'), Shion Andrew ('21), Mia Taylor ('22)
  *
  * \brief Provides the main() function for simulating a ttauri star cluster or one star; defines other helper functions not associated with TTauriStar class.
  */
 
 #include "ttauristar.hpp"
 #include <stdio.h>
-
 using namespace std;
+#include <string>
+#include <algorithm>
 
 bool const RAND_DIST = false; // False for (testing) NO random distribution of Bfield and Mdot factor, True (normal mode) for random distribution
-int const TotalSimulations = 9;
-static const std::vector<double> TIMESTEPS {0.0001, 0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5,1};
+int const TotalSimulations = 1;
+static const vector<double> TIMESTEPS {0.05, 0.005}; // .005 the timestep we want
+static const vector<bool> PropellerTests = {false,true};
 
-double const OUTPUTID = 0.001;
 
+/**
+ * \brief holds period and phase (1,2,3 or 4) of each simulated star
+ */
 struct starData {
 	double period;
 	int phase;
@@ -50,8 +54,8 @@ void computeStats(vector<starData> periods, int bucket, int simulationNumber)
 	}
 
 	// save star population distribution per bucket in csv
-	std::ofstream myfile;
-	myfile.open ("starStages" + to_string(simulationNumber) + ".csv", std::ios_base::app);
+	ofstream myfile;
+	myfile.open ("starStages" + to_string(simulationNumber) + ".csv", ios_base::app);
 	myfile << bucket << "," << phase1 << "," << phase2 << "," << phase3 << "," << phase4 << "\n";
 	myfile.close();
 
@@ -96,8 +100,8 @@ for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 
 	for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 		// save number of stars in each bucket to csv
-		std::ofstream myfile;
-		myfile.open ("bucketCount" +  to_string(simulationNumber) + ".csv", std::ios_base::app);
+		ofstream myfile;
+		myfile.open ("bucketCount" +  to_string(simulationNumber) + ".csv", ios_base::app);
 		myfile << bucket << "," << periodsData[bucket].size()  << "\n";
 		myfile.close();
 	}
@@ -134,7 +138,7 @@ for(size_t bucket = 0; bucket < periodsData.size(); ++bucket){
 void plothistogram(vector<starData> periods1, vector<starData>periods2, int simulationNumber)
 {
     stringstream folderNameStream;
-    folderNameStream << std::fixed << setprecision(6);
+    folderNameStream << fixed << setprecision(4);
     folderNameStream << TIMESTEPS[simulationNumber]; // OUTPUTID*simulationNumber;
     string folderName = folderNameStream.str();
 
@@ -212,7 +216,7 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
 		//cout << "Number of Stars: " << periods1.size()+periods2.size() << endl;
 
     fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
-    std::cout << fprintf(gp3, "%s%s%s \n", "set output 'distribution ", to_string(simulationNumber).c_str(), ".eps'") << std::endl;
+    fprintf(gp3, "%s \n", "set output 'distributionPhase.eps'");
     fprintf(gp3, "%s\n", "binwidth=1");
     fprintf(gp3, "%s\n", "set boxwidth binwidth");
     fprintf(gp3, "%s\n", "bin(x,width)=width*floor(x/width) + binwidth/2.0");
@@ -227,7 +231,7 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
     fprintf(gp3, "%s \n", "plot 'periods2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_4.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_3.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, 'periods2_2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
     fprintf(gp3, "%s \n", "unset multiplot");
 
-		//fprintf(gp3, "%s \n", "plot 'period.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, '' using 2 title 'Col2'");
+	//fprintf(gp3, "%s \n", "plot 'period.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle, '' using 2 title 'Col2'");
 
     fclose(temp1);
     fclose(temp1_4);
@@ -239,9 +243,107 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
     fclose(temp2_3);
     fclose(temp2_2);
     fclose(temp2_1);
-    fclose(gp3);
-    chdir(".."); 
+     //fclose(gp3);
+    //chdir(".."); 
+
 }
+
+/**
+ * \brief plot period histogram with log scale on the x axis,
+ *
+ * \param periods1 for stars with mass < 0.25 and periods2 for stars with mass > 0.25
+ * \returns
+ * Added 4/5/20 by Mia Taylor
+ * gnuplot commands largely based on this:
+ * https://stackoverflow.com/questions/24207850/gnuplot-histogram-x-logscale
+ */
+void plotlogscalehistogram(vector<double> periods1, vector<double> periods2, int simulationNumber)
+{
+    string str1 = "Period" + to_string(PropellerTests[simulationNumber]) + "Small.temp";
+    const char* F1 = str1.c_str();
+    string str2 = "Period" + to_string(PropellerTests[simulationNumber]) + "Large.temp";
+    const char* F2 = str2.c_str();
+
+
+    FILE * temp1 = fopen("periods1loghist.temp", "w");
+    FILE * temp2 = fopen("periods2loghist.temp", "w");
+    FILE * file1 = fopen(F1, "w");
+    FILE * file2 = fopen(F2, "w");
+    FILE* gp3=popen("gnuplot -persistent","w");
+
+    double binsPerDecade = 10;
+    double intervalWidth = pow(10,1/binsPerDecade);
+
+    // determining the range of the periods
+    double minPeriod = min(*min_element(periods1.begin(), periods1.end()),
+                          *min_element(periods2.begin(), periods2.end()));
+    
+    double maxPeriod = max(*max_element(periods1.begin(), periods1.end()),
+                          *max_element(periods2.begin(), periods2.end()));
+    cout << maxPeriod << endl;
+    cout << minPeriod << endl;
+    // min and max OOM
+    int minOOM = floor(log10(minPeriod));
+    int maxOOM = floor(log10(maxPeriod))+1; // round down and then add 1
+    // with bins of width 
+    vector<double> periodbins1;
+    vector<double> periodbins2;
+    vector<double> bins;
+    
+    // iterate from minimum period to maximum period
+    for(double i = pow(10,minOOM); i < pow(10,maxOOM); i *= intervalWidth) {
+        periodbins1.push_back(0);
+        periodbins2.push_back(0);
+        bins.push_back(i);
+    }
+
+    // sorting periods into bins
+    for(size_t k=0;k<periods1.size();k++) {
+        size_t binIndex = floor((log10(periods1[k]) - minOOM)*binsPerDecade);
+        ++periodbins1[binIndex];
+    }
+
+    for(size_t k=0;k<periods2.size();k++) {
+        size_t binIndex = floor((log10(periods2[k]) - minOOM)*binsPerDecade);
+        ++periodbins2[binIndex];
+    }
+
+
+    // printing to files
+    for(size_t k=0;k<periodbins1.size();k++) {
+        double numPer1 = periodbins1[k]; // number of stars in bin
+        double numPer2 = periodbins2[k];
+        // save period at bottom of bin, N stars in bin, and error (sqrt[N])
+        fprintf(temp1,"%f %f %f \n",bins[k],numPer1,pow(numPer1,.5));
+        fprintf(temp2,"%f %f %f \n",bins[k],numPer2,pow(numPer2,.5));
+        fprintf(file1,"%f %f %f \n",bins[k],numPer1,pow(numPer1,.5));
+        fprintf(file2,"%f %f %f \n",bins[k],numPer2,pow(numPer2,.5));
+
+    }
+
+    fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+    fprintf(gp3, "%s%s%s \n", "set output 'distributionlogscale", to_string(PropellerTests[simulationNumber]).c_str(), ".eps'");
+
+    fprintf(gp3, "%s\n", "set logscale x");
+    // fprintf(gp3, "%s\n", "set boxwidth 1.0");
+
+    fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Period Distribution","\"");
+    fprintf(gp3, "%s \n", "set style histogram errorbars linewidth 1");
+    fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
+    fprintf(gp3, "%s \n", "unset xlabel");
+    fprintf(gp3, "%s%s %s \n", "set label 1\"","m < 0.25 solar mass","\" at graph 0.8,0.9");
+    fprintf(gp3, "%s \n", "plot 'periods1loghist.temp' using 1:2:3:($1*0.2) with boxerrorbars"); //adjust boxwidth on plot here ($1*0.2)
+    fprintf(gp3, "%s \n", "set xlabel");
+    fprintf(gp3, "%s \n", "set xlabel \"Period (days)\"");
+    fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.8,0.9");
+    fprintf(gp3, "%s \n", "plot 'periods2loghist.temp' using 1:2:3:($1*0.2) with boxerrorbars"); //adjust boxwidth on plot here
+    fprintf(gp3, "%s \n", "unset multiplot");
+    fclose(temp1);
+    fclose(temp2);
+    fclose(file1);
+    fclose(file2);
+}
+
 
 /**
  * \brief plot period histogram with log scale on the x axis, color codes locked vs unlocked stars
@@ -254,8 +356,8 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
  */
  void plotlogscalehistogramWithPhase(vector<starData> periods1, vector<starData>periods2, double simulationNumber)
 {
-        stringstream folderNameStream;
-    folderNameStream << std::fixed << setprecision(6);
+    stringstream folderNameStream;
+    folderNameStream << fixed << setprecision(4);
     folderNameStream << TIMESTEPS[simulationNumber]; //OUTPUTID*simulationNumber;
     string folderName = folderNameStream.str();
 
@@ -323,7 +425,6 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
 		period2_unlockedVector.push_back(1);
 	}
 
-
 	FILE * temp1_locked = fopen("lockedPeriods1.temp", "w");
 	FILE * temp1_unlocked = fopen("unlockedPeriods1.temp", "w");
 
@@ -336,19 +437,19 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
   double intervalWidth = pow(10,1/binsPerDecade);
   // determining the range of the periods
 
-  double minPeriod = min(*std::min_element(period1_lockedVector.begin(), period1_lockedVector.end()),
-                          min( min(*std::min_element(period1_unlockedVector.begin(), period1_unlockedVector.end()),
-												*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())),
-											*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())));
+  double minPeriod = min(*min_element(period1_lockedVector.begin(), period1_lockedVector.end()),
+                          min( min(*min_element(period1_unlockedVector.begin(), period1_unlockedVector.end()),
+												*min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())),
+											*min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())));
 
-  double maxPeriod = max(*std::max_element(period1_lockedVector.begin(), period1_lockedVector.end()),
-                        max( max(*std::max_element(period1_unlockedVector.begin(), period1_unlockedVector.end()),
-											*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())),
-										*std::min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())));
+  double maxPeriod = max(*max_element(period1_lockedVector.begin(), period1_lockedVector.end()),
+                        max( max(*max_element(period1_unlockedVector.begin(), period1_unlockedVector.end()),
+											*min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())),
+										*min_element(period2_unlockedVector.begin(), period2_unlockedVector.end())));
 
   // min and max OOM
-  int minOOM = floor(log(minPeriod));
-  int maxOOM = floor(log(maxPeriod))+1; // round down and then add 1
+  int minOOM = floor(log10(minPeriod));
+  int maxOOM = floor(log10(maxPeriod))+1; // round down and then add 1
 
   // with bins of width
   vector<double> periodbins1_locked;
@@ -366,25 +467,25 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
   }
     // calculate bin that each star belongs to and increment stars in bin (periodsbins)
 	for(size_t k=0;k<period1_lockedVector.size();k++) {
-			size_t binIndex = floor((log(period1_lockedVector[k]) - minOOM)*binsPerDecade);
+			size_t binIndex = floor((log10(period1_lockedVector[k]) - minOOM)*binsPerDecade);
             
 			++periodbins1_locked[binIndex]; 
 	}
 
 	for(size_t k=0;k<period1_unlockedVector.size();k++) {
-      size_t binIndex = floor((log(period1_unlockedVector[k]) - minOOM)*binsPerDecade);
+      size_t binIndex = floor((log10(period1_unlockedVector[k]) - minOOM)*binsPerDecade);
 
       ++periodbins1_unlocked[binIndex];
   }
 
   for(size_t k=0;k<period2_lockedVector.size();k++) {
-      size_t binIndex = floor((log(period2_lockedVector[k]) - minOOM)*binsPerDecade);
+      size_t binIndex = floor((log10(period2_lockedVector[k]) - minOOM)*binsPerDecade);
       ++periodbins2_locked[binIndex];
 
   }
 
   for(size_t k=0;k<period2_unlockedVector.size();k++) {
-      size_t binIndex = floor((log(period2_unlockedVector[k]) - minOOM)*binsPerDecade);
+      size_t binIndex = floor((log10(period2_unlockedVector[k]) - minOOM)*binsPerDecade);
       ++periodbins2_unlocked[binIndex];
   }
 
@@ -410,7 +511,7 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
   fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
   fprintf(gp3, "%s \n", "set output 'distributionlogscale.eps'");
   fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
-  std::cout<< fprintf(gp3, "%s \n", "set output 'distributionlogscale.eps'") << "logscaleplot" << std::endl;
+  fprintf(gp3, "%s \n", "set output 'distributionlogscale.eps'");
   fprintf(gp3, "%s\n", "set logscale x");
   fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Period Distribution","\"");
   fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
@@ -427,10 +528,65 @@ void plothistogram(vector<starData> periods1, vector<starData>periods2, int simu
   fclose(temp1_unlocked);
   fclose(temp2_locked);
   fclose(temp2_unlocked);
-  fclose(gp3);
+  //fclose(gp3);
   chdir(".."); 
 
 }
+
+
+/**
+ * \brief plot propeller strength histogram,
+ *
+ * \param starData struct periods1 for stars with mass < 0.25, periods2 for stars with mass > 0.25, simulationNumber (if performing multiple simulations)
+ * \returns
+ */
+void plotPropellerStrengthhistogram(vector<double> PropellerStrengths1, vector<double> PropellerStrengths2, int simulationNumber)
+{
+    stringstream folderNameStream;
+    folderNameStream << fixed << setprecision(4);
+    folderNameStream << TIMESTEPS[simulationNumber]; // OUTPUTID*simulationNumber;
+    string folderName = folderNameStream.str();
+
+	// make new folder and change directories into new folder
+    mkdir(folderName.c_str(), S_IRUSR | S_IWUSR | S_IXUSR);
+    chdir(folderName.c_str());
+
+    FILE * temp1 = fopen("propellerStrengths1.temp", "w");
+    FILE * temp2 = fopen("propellerStrengths2.temp", "w");
+
+
+	FILE* gp3=popen("gnuplot -persistent","w");
+
+	// write periods to file for gnuplot
+    for(size_t k=0;k<PropellerStrengths1.size();k++) {
+        fprintf(temp1,"%f \n",PropellerStrengths1[k]);
+    }
+    for(size_t k=0;k<PropellerStrengths2.size();k++) {
+        fprintf(temp2,"%f \n",PropellerStrengths2[k]);
+    }
+
+    fprintf(gp3, "%s \n", "set terminal postscript eps enhanced color font 'Helvetica,10'");
+    fprintf(gp3, "%s%s%s \n", "set output 'PropellerStrengthDistribution ", to_string(simulationNumber).c_str(), ".eps'");
+    fprintf(gp3, "%s\n", "binwidth=1");
+    fprintf(gp3, "%s\n", "set boxwidth binwidth");
+    fprintf(gp3, "%s\n", "bin(x,width)=width*floor(x/width) + binwidth/2.0");
+    fprintf(gp3, "%s%s %s \n", "set multiplot layout 2,1 title \"","Propeller Strength Distribution","\"");
+    fprintf(gp3, "%s \n", "set ylabel \"Number of stars\"");
+    fprintf(gp3, "%s \n", "unset xlabel");
+    fprintf(gp3, "%s \n", "set xrange [0:100]");
+    fprintf(gp3, "%s%s %s \n", "set label 1\"","m < 0.25 solar mass","\" at graph 0.8,0.9");
+    fprintf(gp3, "%s \n", "plot 'propellerStrengths1.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
+    fprintf(gp3, "%s \n", "set xlabel \"PropellerStrength (v_s_t_a_r / v_d_i_s_k)\"");
+    fprintf(gp3, "%s%s %s \n", "set label 1\"","m > 0.25 solar mass","\" at graph 0.8,0.9");
+    fprintf(gp3, "%s \n", "plot 'propellerStrengths2.temp' using (bin($1,binwidth)):(1.0) smooth freq with boxes notitle");
+    fprintf(gp3, "%s \n", "unset multiplot");
+
+    fclose(temp1);
+    chdir(".."); 
+}
+
+
+
 
 /**
  * \brief read cmk data file
@@ -466,11 +622,11 @@ vector<vector<double>> readcmk(string fname)
 
 
     double mass; // Mass in M_sun
-    double logage; //???
+    double logage; 
     double age; // age in Myrs
     double logL; // log(Luminosity)
     double logT; // log(Temperature)
-    double radius;
+    double radius; // R_sun
 
     // read one line at a time
     while (getline(inputFile, line)){
@@ -551,7 +707,6 @@ vector<vector<double>> readcluster(string fname)
 
 /**
  * \brief generate the distribution corresponding to a cluster
- * \param RandomGen  0 if we do not want random distribution (fixed Bfields, etc), 1 if we do
  * \param fname      vectors of logmasses and logages
  * \param n          size of the simulated star table
  * \returns          a distribution
@@ -564,18 +719,12 @@ vector<vector<double>> generatedistribution(vector<vector<double>> startable, do
     size_t nummassbin = logmassbins.size() - 1;
     // initialize weights with zeros
     vector<double> logmassweights(nummassbin,0.0);
+
     // create age bins
     vector<double> logagebins{-1.2,-1,-0.8,-0.4,-0.2,0,0.2,0.4,0.6,0.8,1.0,1.2,1.4,1.6,1.8,2.0};
-    /*
-    double logagemin = -2.0;
-    double logagemax = 3.0;
-    for (size_t i = 0; i <= 10; ++i) {
-        logagebins.push_back(logagemin+(logagemax-logagemin)*i/10);
-    }
-    */
     // number of age bins
     size_t numagebin = logagebins.size() - 1;
-    // initilize ages with zeros
+    // initilize age weights with zeros
     vector<vector<double>> logageweights;
     for (size_t i = 0; i < nummassbin; ++i) {
         logageweights.push_back(vector<double>(numagebin,0.0));
@@ -603,45 +752,47 @@ vector<vector<double>> generatedistribution(vector<vector<double>> startable, do
             }
         }
     }
-    /*
-    for (size_t i = 0; i < nummassbin; ++i) {
-        cout << "m" << logmassweights[i] << endl;
-        for (size_t j = 0; j < numagebin; ++j) {
-            cout << logageweights[i][j] << endl;
-        }
-    }
-    */
+
     // create distributions
-    piecewise_linear_distribution<> logmassdist(logmassbins.begin(),
-        logmassbins.end(),logmassweights.begin());
+    piecewise_linear_distribution<> logmassdist(logmassbins.begin(),logmassbins.end(),logmassweights.begin());
     vector<piecewise_linear_distribution<>> logagedists;
     for (size_t i = 0; i < nummassbin; ++i) {
         logagedists.push_back(piecewise_linear_distribution<>(logagebins.begin(),
         logagebins.end(),logageweights[i].begin()));
     }
+    
     // vectors to store simulated mass
     vector<double> simlogmasses;
     vector<double> simlogages;
+
     // random number generator
     random_device rd;
     mt19937 gen(rd());
 
-    if (RAND_DIST ==false){
-        std::default_random_engine gen(0); }
 
-    // choose n stars from the distribution
+    // choose n stars (spcified size of simulated star table) from the distribution
     for (size_t i = 0; i < n; ++i){
         double logmass;
-        logmass = logmassdist(gen);
-        double logage = 0.0;
-        for (size_t i = 0; i < nummassbin; ++i) {
-            if (logmassbins[i] <= logmass && logmass < logmassbins[i+1]) {
-                logage = logagedists[i](gen);
-            }
+        double logage;
+        for (size_t j = 0; j < nummassbin; ++j) {
+            if (logmassbins[j] <= logmass && logmass < logmassbins[j+1]) {
+                      // draw from distribution of relevent mass bin
+                      logage = logagedists[j](gen);
+                      logmass = logmassdist(gen);
+            } 
         }
-        simlogmasses.push_back(logmass);
-        simlogages.push_back(logage);
+        if(RAND_DIST){
+            simlogmasses.push_back(logmass);
+            simlogages.push_back(logage);
+        }
+        else{
+            simlogmasses.push_back(logmasses[i]);
+            simlogages.push_back(logages[i]);
+        }
     }
+    //cout << simlogmasses[0] << endl;
+    //cout << simlogages[0] << endl;
+
     // pack the two vectors as a table
     vector<vector<double>> simstartable;
     simstartable.push_back(simlogmasses);
@@ -714,7 +865,6 @@ void plotdistribution()
         }
     }
     // plot
-    //plothistogram(periods1, periods2);
 }
 
 /**
@@ -723,35 +873,33 @@ void plotdistribution()
  * \param cluster 1=ONC, 2=NGC and simulationNumber (to keep track if performing multiple iteration)
  * \returns
  */
-void simulation(vector<vector<double>> simstartable, int simulationNumber, bool RandDist)
+void simulation(vector<vector<double>> simstartable, int simulationNumber)
 {
-    double timestep = TIMESTEPS[simulationNumber]; //simulationNumber*OUTPUTID;
-    std::cout<<timestep<<std::endl;
+    double timestep = TIMESTEPS[simulationNumber]; 
+    //cout<< "TIMESTEP: " << timestep<<endl;
+    
     // compute cmk table
     vector<vector<double>> cmktable = readcmk("cmkdata.txt");
 
-    // generator
+    // random number generator
     default_random_engine genm;
-    //default_random_engine genb;
-
-		random_device rd;  //Will be used to obtain a seed for the random number engine
-		mt19937 genb(rd()); //Standard mersenne_twister_engine seeded with rd()
-        if (RAND_DIST ==false){
-            std::default_random_engine gen(0); 
-        }
-		// normal distribution of log(massfactor)
+    default_random_engine genb; 
+    
+    mt19937 genm_fixed(1); //Standard mersenne_twister_engine with fixed seed
+    mt19937 genb_fixed(1); //Standard mersenne_twister_engine with fixed seed
+    
+	// normal distribution of log(massfactor)
     normal_distribution<double> logmdotfactordist(0.0,0.32);
 
-		// normal distribution of bfieldstrength
-    //normal_distribution<double> bfielddist(1.67,0.1);
+	// normal distribution of bfieldstrength
+    normal_distribution<double> bfielddist(1.67,0.1);
 
-		// uniform distribution of bfieldstrength
-		uniform_real_distribution<double> bfielddist(1.2,2.0);
+	// uniform distribution of bfieldstrength
+	// uniform_real_distribution<double> bfielddist(1.2,2.0);
 
-    // loop through the stars
-    std::clock_t start;
+    clock_t start;
     double duration;
-    start = std::clock();
+    start = clock();
     FILE * datafile;
     datafile = fopen("simulationONC.txt", "w");
     // write first line
@@ -761,32 +909,38 @@ void simulation(vector<vector<double>> simstartable, int simulationNumber, bool 
     FILE * datafile2 = fopen("fasterThanKeplerian.txt", "w");
     fprintf(datafile2,"%s \n","mass(solarmass) age(Myr)        period(days)    log(mdotfactor) bfield(kG)        Keplerian period");
     size_t numFasterThanKeplerian = 0;
-		vector<starData> periods1, periods2;
 
-		//vector<double> periods1, periods2;
-    for (size_t i = 0; i < simstartable[0].size(); ++i) {
-			for(size_t repeat = 0; repeat < 1; ++repeat){
-		        double mass = pow(10,simstartable[0][i]);
-		        double age = 1; //pow(10,simstartable[1][i]);
-                double bfieldstrength;
-                double logmdotfactor;
-						if(RandDist){
-                            bfieldstrength = bfielddist(genb);
-                            logmdotfactor = logmdotfactordist(genb);
-                        } else{
-                            bfieldstrength = 1.67; //pick fixed value
-                            logmdotfactor = logmdotfactordist(genb);
-                        }		        
-            TTauriStar star = TTauriStar(cmktable, mass, age, pow(10,logmdotfactor), bfieldstrength, timestep);            
-            std::vector<double> dataVector = star.update();
-						            
+	vector<starData> periods1_phase, periods2_phase;
+	vector<double> periods1, periods2;
+    vector<double> propellerStrengths1, propellerStrengths2;
+
+	// iterate through distribution of stars
+    for (size_t starNumber = 0; starNumber < simstartable[0].size(); ++starNumber) {
+		// note: repeat variable for testing only
+        for(size_t repeat = 0; repeat < 1; ++repeat){
+		    double mass = pow(10,simstartable[0][starNumber]);
+		    double age = pow(10,simstartable[1][starNumber]);
+            double bfieldstrength = bfielddist(genb);
+            double logmdotfactor = logmdotfactordist(genm);
+            if (RAND_DIST == false){
+                bfieldstrength = 1.67;
+                logmdotfactor = 0.0;
+            }
+            TTauriStar star = TTauriStar(cmktable, mass, age, pow(10,logmdotfactor), bfieldstrength, timestep, PropellerTests[repeat]);            
+            vector<double> dataVector = star.update();
+
+            double propellerStrength = star.propellerStrength_;
+            
             starData currentStar;
-		        currentStar.period = dataVector.at(0);
-						currentStar.phase = dataVector.at(1);
-						double period = currentStar.period;
+		    currentStar.period = dataVector.at(0);
+			currentStar.phase = dataVector.at(1);
 
-		        // write to file
-		        fprintf(datafile,"%f        %f        %f        %f        %f \n",mass,age,period, logmdotfactor,bfieldstrength);
+			double period = currentStar.period;
+            if(period > 30){
+                cout << mass << " " << age << "" << period << endl;
+            }
+		    // write to file
+		    fprintf(datafile,"%f        %f        %f        %f        %f \n",mass,age,period, logmdotfactor,bfieldstrength);
 		        
             // Check if final period is greater than Keplerian period
             vector<double> kepler = star.getvector(12);
@@ -795,24 +949,30 @@ void simulation(vector<vector<double>> simstartable, int simulationNumber, bool 
             if (keplerianPeriod > period) {
                 fprintf(datafile2,"%f        %f        %f        %f        %f         %f \n",mass,age,period,logmdotfactor,bfieldstrength,keplerianPeriod);
             }
-
             if (mass < 0.25) {
-                periods1.push_back(currentStar);
+                periods1_phase.push_back(currentStar);
+                periods1.push_back(period);
+                propellerStrengths1.push_back(propellerStrength);
+                
             } else {
-                periods2.push_back(currentStar);
+                 periods2_phase.push_back(currentStar);
+                 periods2.push_back(period);
+                propellerStrengths2.push_back(propellerStrength);
+
             }
-					}
-		    }
+		}
+	}
 
     fclose(datafile);
     fclose(datafile2);
-    duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+    duration = ( clock() - start ) / (double) CLOCKS_PER_SEC;
     cout<<"the program takes "<< duration << " s" << endl;
     cout << "there are " << numFasterThanKeplerian << " stars with periods shorter than break-up period" << endl;
     // plot
-
-	plothistogram(periods1, periods2, simulationNumber);
-    //plotlogscalehistogramWithPhase(periods1, periods2, simulationNumber);
+	//plothistogram(periods1_phase, periods2_phase, simulationNumber);
+    plotlogscalehistogram(periods1, periods2, simulationNumber);
+    // plotPropellerStrengthhistogram(propellerStrengths1, propellerStrengths2, simulationNumber);
+    //plotlogscalehistogramWithPhase(periods1_phase, periods1_phase, simulationNumber);
 }
 
 
@@ -844,33 +1004,32 @@ int main()
         // compute cmk table
         vector<vector<double>> cmktable = readcmk("cmkdata.txt");
         
-        for(int simulationNumber = 1; simulationNumber <= TotalSimulations; ++simulationNumber) {
+        // if performing multiple simulations, iterate
+        for(int simulationNumber = 0; simulationNumber < TotalSimulations; ++simulationNumber) {
 
-            // create a star with magnetic field of 1.67kG
-            double timestep = TIMESTEPS[simulationNumber]; //simulationNumber*OUTPUTID;
-            TTauriStar star = TTauriStar(cmktable, mass, age, 1, 1.67, timestep);
-            star.update();
-
-            // Saving plots to folder
-            stringstream folderNameStream0;
-            folderNameStream0 << std::fixed << setprecision(4);
-            folderNameStream0 << "Star: Mass_" << mass << "_" << timestep;
-            //folderNameStream << "Star: Mass_" << mass << " Age_ " << age;
-            string folderName0 = folderNameStream0.str();
-
-                    // make new folder and change directories into new folder
-            mkdir(folderName0.c_str(), S_IRUSR | S_IWUSR | S_IXUSR);
-            chdir(folderName0.c_str());
-
-            
-
+            for(int i = 0; i < 2; ++i){
+                // Saving plots to folder
+                stringstream folderNameStream0;
+                folderNameStream0 << fixed << setprecision(2);
+                //folderNameStream0 << "Star: Mass_" << mass << "_" << TIMESTEPS[simulationNumber];
+                folderNameStream0 << "Star: Mass_" << mass << " Age_ " << age << "TF_" << i;
+                string folderName0 = folderNameStream0.str();
+                // make new folder and change directories into new folder
+                mkdir(folderName0.c_str(), S_IRUSR | S_IWUSR | S_IXUSR);
+                chdir(folderName0.c_str());
+                // create a star with magnetic field of 1.67kG
+                double timestep = TIMESTEPS[simulationNumber]; //simulationNumber*OUTPUTID;
+                TTauriStar star = TTauriStar(cmktable, mass, age, 1, 1.67, timestep, PropellerTests[i]);
+                star.update();
                 // Plot all of the star's parameters as a function of time
-                    int TIME_INDEX = 1;
-            int N_Y_INDEX = 12; // MT: changed from 10 to 12 so it plots perioddot and keplerian period
-            for(int y_index = 2; y_index <= N_Y_INDEX; y_index += 1) {
-                star.plot(TIME_INDEX, y_index); }
-            chdir(".."); 
-
+                int TIME_INDEX = 1;
+                int N_Y_INDEX = 13; // MT: changed from 10 to 12 so it plots perioddot and keplerian period
+                for(int y_index = 2; y_index <= N_Y_INDEX; y_index += 1) {
+                    star.plot(TIME_INDEX, y_index); 
+                }
+                // star.plot(2, 5);
+                chdir(".."); 
+            }
         }
 
 
@@ -896,16 +1055,12 @@ int main()
 
           // plotstartable(startable, cluster, false);
           // simulate a startable of size n
-          vector<vector<double>> simstartable = generatedistribution(startable,1000);
+          vector<vector<double>> simstartable = generatedistribution(startable,800);
           // plotstartable(simstartable, cluster, true);
-          if (TotalSimulations > 0){
-            for(int simulationNumber = 1; simulationNumber <= TotalSimulations; ++simulationNumber) {
-                simulation(simstartable, simulationNumber, RAND_DIST);
+          for(int simulationNumber = 0; simulationNumber < TotalSimulations; ++simulationNumber) {
+                cout << simulationNumber << endl;
+                simulation(simstartable, simulationNumber);
             }
-          }
-          else{
-              simulation(simstartable, 0, RAND_DIST);
-          }
 
 
     } else {

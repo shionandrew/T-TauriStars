@@ -49,7 +49,7 @@ public:
 	 * \param bfieldstrength:
 	 */
 	TTauriStar(vector<vector<double>> cmktable, double mass, double age,
-		double massdotfactor, double bfieldstrength, double timestep);
+		double massdotfactor, double bfieldstrength, double timestep, bool Romanava);
 
 	/**
 	 * \brief update runs the simulation for each star until convergence.
@@ -105,6 +105,10 @@ public:
 	 */
 	double slope( vector<double>& x, vector<double>& y);
 
+	// public data members
+	double propellerStrength_;							/// ratio of star velocity to keplerian velocity of disk
+	vector<double> propellerStrengths_; /// ratio of star velocity to keplerian velocity of disk
+
 
 private:
 	double calculatecriticaldensity();
@@ -128,6 +132,7 @@ private:
 	double bfieldstrength_;						/// (KGauss)
 	double massdot_;            			/// M_sun/yr
 	double period_;										/// days
+	double period_Romanova_; 						/// TEMPORARY! Stores period calculated by results of Romanava et al with accretion during propeller effect 
 	double radius_;										/// R_sun
 	double bfield_;										/// KGauss
 	double rm_;												/// R_sun
@@ -139,11 +144,15 @@ private:
 	bool valid_;  /// if the mass is > 3, there are not values in the table, so we drop stars with those masses.
 	//This should be changed in the future with better data tables.
 	double timestep_; 		// timestep (in Myrs)
+	bool Romanova_; 	// TEMPORARY boolean determining whether to allow for mass accretion during prop. stage
+	double radiusdot_; //R_sun/Myr
+
 
 	vector<double> ages_;
 	vector<double> masses_;         /// mass of the protostar changed backward
 	vector<double> massdots_;       /// mass accretion rate of the protostar
 	vector<double> periods_;        /// period of the protostar
+	vector<double> periods_Romanova_;  /// TEMPORARY period of the protostar, allowing for accretion during prop.
 	vector<double> acceffs_;
 	vector<double> radii_;
 	vector<double> rms_;
